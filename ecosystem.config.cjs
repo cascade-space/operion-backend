@@ -19,6 +19,8 @@ module.exports = {
   apps: [{
     name: 'operion-backend',
     script: './dist/server.js',
+    interpreter: 'node',
+    interpreter_args: '-r tsconfig-paths/register',
     instances: 1, // Use 1 for free tier, scale to 'max' for production with load balancer
     exec_mode: 'fork', // Use 'fork' for single instance, 'cluster' for multiple instances
     env: {
