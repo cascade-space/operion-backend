@@ -1,0 +1,14 @@
+# Ignore backup files
+*.tar.gz
+*.sql
+*.dump
+
+# Ignore logs
+*.log
+backup.log
+health-check.log
+
+# Ignore temporary files
+*.tmp
+*.temp
+
