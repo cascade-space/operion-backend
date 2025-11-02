@@ -8,7 +8,7 @@
  *   npm install -g pm2
  * 
  * Usage:
- *   pm2 start ecosystem.config.js
+ *   pm2 start ecosystem.config.cjs
  *   pm2 stop operion-backend
  *   pm2 restart operion-backend
  *   pm2 logs operion-backend

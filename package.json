@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "Multi-tenant Factory Management System Backend",
   "main": "dist/server.js",
-  "type": "module",
   "scripts": {
     "start": "node dist/server.js",
     "dev": "tsx watch src/server.ts",
@@ -21,7 +20,7 @@
     "lint:fix": "eslint src/**/*.ts --fix",
     "audit": "npm audit",
     "audit:fix": "npm audit fix",
-    "pm2:start": "pm2 start ecosystem.config.js",
+    "pm2:start": "pm2 start ecosystem.config.cjs",
     "pm2:stop": "pm2 stop operion-backend",
     "pm2:restart": "pm2 restart operion-backend",
     "pm2:logs": "pm2 logs operion-backend",
