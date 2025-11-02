@@ -4,9 +4,20 @@
  */
 const tsConfigPaths = require('tsconfig-paths');
 const path = require('path');
+const fs = require('fs');
+
+// Read and parse tsconfig.json (supports comments)
+function readTsConfig(filePath) {
+  const content = fs.readFileSync(filePath, 'utf8');
+  // Strip single-line comments (// ...)
+  const withoutComments = content.replace(/\/\/.*$/gm, '');
+  // Strip multi-line comments (/* ... */)
+  const cleaned = withoutComments.replace(/\/\*[\s\S]*?\*\//g, '');
+  return JSON.parse(cleaned);
+}
 
 // Read the base tsconfig.json
-const tsConfig = require('./tsconfig.json');
+const tsConfig = readTsConfig(path.resolve(__dirname, 'tsconfig.json'));
 
 // Map paths from src/ to dist/ for runtime
 // baseUrl is "./src", so we change it to "./dist" for runtime
