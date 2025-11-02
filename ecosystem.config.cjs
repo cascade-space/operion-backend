@@ -30,8 +30,8 @@ module.exports = {
       // PM2 will automatically load .env from the app directory
     },
     // Logging configuration
-    error_file: './logs/pm2-error.log',
-    out_file: './logs/pm2-out.log',
+    // Using PM2 default logs location (~/.pm2/logs/) for reliability
+    // Custom logs can be enabled by creating ./logs/ directory first
     log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
     merge_logs: true,
     
