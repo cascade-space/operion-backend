@@ -47,7 +47,7 @@ module.exports = {
     
     // Graceful shutdown
     kill_timeout: 5000, // Time to wait for graceful shutdown (ms)
-    wait_ready: true, // Wait for app to emit 'ready' event
+    wait_ready: false, // Disabled - app doesn't emit ready event currently
     listen_timeout: 10000, // Time to wait for app to start listening
     
     // Source map support
