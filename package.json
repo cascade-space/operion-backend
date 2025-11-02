@@ -77,12 +77,8 @@
     "nodemon": "^3.0.2",
     "supertest": "^6.3.3",
     "ts-node": "^10.9.2",
-<<<<<<< HEAD
     "tsc-alias": "^1.8.8",
     "tsconfig-paths": "^4.2.0",
-=======
-    "tsc-alias": "^1.8.8",
->>>>>>> ecb45ee6ba75cb4e4a76e193649ba039fb961751
     "tsx": "^4.6.2",
     "typescript": "^5.3.3"
   },
