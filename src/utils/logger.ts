@@ -1,4 +1,5 @@
 import winston from 'winston';
+import { Writable } from 'stream';
 import env from '@/config/env';
 import cloudWatchLogger from '@/utils/cloudwatch';
 
@@ -40,21 +41,25 @@ const logger = winston.createLogger({
 
 // Custom transport to send logs to CloudWatch
 if (env.NODE_ENV === 'production' && process.env.CLOUDWATCH_LOG_GROUP) {
-  logger.add(new winston.transports.Stream({
-    stream: {
-      write: (message: string): boolean => {
-        try {
-          const logData = JSON.parse(message.trim());
-          cloudWatchLogger.log(logData.level, logData.message, logData).catch(() => {
-            // Silently fail - don't break application if CloudWatch fails
-          });
-        } catch {
-          // If parsing fails, send as-is
-          cloudWatchLogger.log('info', message).catch(() => {});
-        }
-        return true;
+  // Create a proper Writable stream for Winston
+  const cloudWatchStream = new Writable({
+    write(chunk: Buffer, encoding: BufferEncoding, callback: (error?: Error | null) => void): void {
+      try {
+        const message = chunk.toString('utf8');
+        const logData = JSON.parse(message.trim());
+        cloudWatchLogger.log(logData.level, logData.message, logData).catch(() => {
+          // Silently fail - don't break application if CloudWatch fails
+        });
+      } catch {
+        // If parsing fails, send as-is
+        cloudWatchLogger.log('info', chunk.toString('utf8')).catch(() => {});
       }
-    } as any
+      callback();
+    }
+  });
+
+  logger.add(new winston.transports.Stream({
+    stream: cloudWatchStream
   }));
 }
 
