@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node dist/server.js",
     "dev": "tsx watch src/server.ts",
-    "build": "tsc",
+    "build": "tsc && tsc-alias",
     "seed": "tsx src/scripts/seed.ts",
     "reset": "tsx src/scripts/reset-database.ts",
     "migrate": "tsx src/scripts/migrate.ts",
@@ -77,7 +77,7 @@
     "nodemon": "^3.0.2",
     "supertest": "^6.3.3",
     "ts-node": "^10.9.2",
-    "tsconfig-paths": "^4.2.0",
+    "tsc-alias": "^1.8.8",
     "tsx": "^4.6.2",
     "typescript": "^5.3.3"
   },
