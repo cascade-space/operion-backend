@@ -27,13 +27,13 @@ elif [ "$OS" = "amzn" ] || [ "$OS" = "rhel" ]; then
     sudo yum update -y
 fi
 
-# Install Node.js 18
-echo "Installing Node.js 18..."
+# Install Node.js 20 LTS (supported version)
+echo "Installing Node.js 20 LTS..."
 if [ "$OS" = "ubuntu" ]; then
-    curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
     sudo apt install -y nodejs
 elif [ "$OS" = "amzn" ] || [ "$OS" = "rhel" ]; then
-    curl -fsSL https://rpm.nodesource.com/setup_18.x | sudo bash -
+    curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo bash -
     sudo yum install -y nodejs
 fi
 
