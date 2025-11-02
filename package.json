@@ -30,6 +30,7 @@
     "@aws-sdk/client-cloudwatch-logs": "^3.490.0",
     "@aws-sdk/client-s3": "^3.490.0",
     "@google-cloud/storage": "^7.7.0",
+    "@sentry/node": "^7.91.0",
     "@types/pdfkit": "^0.17.2",
     "bcryptjs": "^2.4.3",
     "compression": "^1.7.4",
@@ -48,7 +49,6 @@
     "mongoose": "^8.0.3",
     "morgan": "^1.10.0",
     "nodemailer": "^6.9.7",
-    "@sentry/node": "^7.91.0",
     "pdfkit": "^0.17.2",
     "sharp": "^0.33.0",
     "uuid": "^9.0.1",
@@ -77,8 +77,12 @@
     "nodemon": "^3.0.2",
     "supertest": "^6.3.3",
     "ts-node": "^10.9.2",
+<<<<<<< HEAD
     "tsc-alias": "^1.8.8",
     "tsconfig-paths": "^4.2.0",
+=======
+    "tsc-alias": "^1.8.8",
+>>>>>>> ecb45ee6ba75cb4e4a76e193649ba039fb961751
     "tsx": "^4.6.2",
     "typescript": "^5.3.3"
   },
