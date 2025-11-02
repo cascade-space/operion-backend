@@ -185,15 +185,23 @@ const corsOptions = {
       });
     }
     
-    // Allow requests with no origin (like mobile apps or curl requests)
+    // Allow requests with no origin for:
+    // 1. Health checks and monitoring tools (curl, server-to-server)
+    // 2. Mobile apps or API clients that don't send origin
+    // Note: CORS only applies to browser requests. Server-to-server requests
+    // (like curl, health checks, monitoring) don't have origins and are safe to allow.
     if (!origin) {
+      // Allow no-origin requests in both development and production
+      // This is safe because:
+      // - CORS is a browser security feature, not needed for server-to-server
+      // - Health checks and monitoring tools need to work
+      // - Browser requests will still have origin headers and be validated below
       if (env.NODE_ENV === 'development') {
         logger.info('CORS: Allowing request with no origin (development mode)');
-        return callback(null, true);
+      } else {
+        logger.info('CORS: Allowing request with no origin (production - health checks/monitoring)');
       }
-      // In production, require origin
-      logger.warn('CORS: Request with no origin blocked (production mode)');
-      return callback(new Error('Origin required'));
+      return callback(null, true);
     }
     
     if (allowedOrigins.length === 0) {
