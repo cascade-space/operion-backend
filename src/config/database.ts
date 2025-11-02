@@ -116,6 +116,31 @@ export const connectDB = async (): Promise<void> => {
     } else if (errorMessage.includes('authentication failed')) {
       console.error('\n⚠️  Authentication Error');
       console.error('Check your MongoDB username and password in the connection string');
+    } else if (errorMessage.includes('ECONNREFUSED') || errorMessage.includes('connection refused')) {
+      console.error('\n⚠️  Connection Refused - MongoDB Not Running');
+      const isLocalhost = MONGODB_URI && (MONGODB_URI.includes('localhost') || MONGODB_URI.includes('127.0.0.1'));
+      if (isLocalhost) {
+        console.error('MongoDB is not running on this server.');
+        console.error('\n📋 To install MongoDB on EC2:');
+        console.error('   1. Run the setup script:');
+        console.error('      cd ~/operion-backend');
+        console.error('      bash deploy/mongodb-setup.sh');
+        console.error('\n   2. Or install manually:');
+        console.error('      # For Ubuntu:');
+        console.error('      curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | sudo gpg -o /usr/share/keyrings/mongodb-server-7.0.gpg --dearmor');
+        console.error('      echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list');
+        console.error('      sudo apt update && sudo apt install -y mongodb-org');
+        console.error('      sudo systemctl start mongod');
+        console.error('      sudo systemctl enable mongod');
+        console.error('\n   3. Or use MongoDB Atlas instead (cloud-hosted)');
+        console.error('      Get connection string from MongoDB Atlas dashboard');
+      } else {
+        console.error('Possible causes:');
+        console.error('  1. MongoDB service is not running on the target server');
+        console.error('  2. MongoDB is not installed');
+        console.error('  3. Firewall is blocking the connection');
+        console.error('  4. MongoDB is configured to bind to a different address');
+      }
     } else if (errorMessage.includes('timeout')) {
       console.error('\n⚠️  Connection Timeout');
       console.error('Possible causes:');
