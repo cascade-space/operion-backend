@@ -5,23 +5,65 @@ This guide provides step-by-step instructions for deploying the Operion backend 
 ## Table of Contents
 
 1. [Prerequisites](#prerequisites)
-2. [Environment Variables Checklist](#environment-variables-checklist)
-3. [AWS Elastic Beanstalk Deployment](#aws-elastic-beanstalk-deployment)
-4. [AWS EC2 Deployment](#aws-ec2-deployment)
-5. [MongoDB Atlas Configuration](#mongodb-atlas-configuration)
-6. [Security Configuration](#security-configuration)
-7. [Verification & Testing](#verification--testing)
-8. [Troubleshooting](#troubleshooting)
+2. [⚠️ CRITICAL: HTTPS Setup (Required for Production)](#-critical-https-setup-required-for-production)
+3. [Environment Variables Checklist](#environment-variables-checklist)
+4. [AWS Elastic Beanstalk Deployment](#aws-elastic-beanstalk-deployment)
+5. [AWS EC2 Deployment](#aws-ec2-deployment)
+6. [MongoDB Atlas Configuration](#mongodb-atlas-configuration)
+7. [Security Configuration](#security-configuration)
+8. [Verification & Testing](#verification--testing)
+9. [Troubleshooting](#troubleshooting)
 
 ## Prerequisites
 
 - AWS account with appropriate permissions
 - MongoDB Atlas account (Free Tier available)
-- Domain name registered (optional, can use default AWS URLs)
+- **Domain name registered (REQUIRED for HTTPS - e.g., cascade-erp.in)**
 - AWS CLI configured (optional, for automation)
 - Strong JWT secrets generated (32+ characters each)
 
+## ⚠️ CRITICAL: HTTPS Setup (Required for Production)
+
+**IMPORTANT:** If your frontend is served over HTTPS (which it should be in production), your backend API **MUST** also use HTTPS. Otherwise, browsers will block API requests due to Mixed Content policies.
+
+### Why HTTPS is Required
+
+- **Mixed Content Error:** Browsers block HTTP requests from HTTPS pages
+- **Security:** HTTPS encrypts API traffic and protects user data
+- **Modern Standards:** Required for production applications
+- **Browser Policies:** Modern browsers increasingly block mixed content
+
+### Quick HTTPS Setup
+
+For detailed instructions, see: **[HTTPS_SETUP_GUIDE.md](./deploy/HTTPS_SETUP_GUIDE.md)**
+
+**Quick Steps:**
+
+1. **Create DNS A Record:**
+   - Subdomain: `api.yourdomain.com` → Your EC2 IP (e.g., `3.107.223.34`)
+   - Wait 5-10 minutes for DNS propagation
+
+2. **SSH to EC2 and run SSL setup:**
+   ```bash
+   ssh -i your-key.pem ubuntu@your-ec2-ip
+   cd ~/operion/Backend/deploy
+   chmod +x ssl-setup.sh
+   sudo ./ssl-setup.sh
+   ```
+
+3. **Update Frontend API URL:**
+   - Change from: `http://3.107.223.34:3000`
+   - To: `https://api.yourdomain.com`
+
+4. **Verify:**
+   ```bash
+   curl https://api.yourdomain.com/health
+   ```
+
+**If you see Mixed Content errors in your browser console, you MUST set up HTTPS for your backend API.**
+
 ## Environment Variables Checklist
+
 
 ### git pull
 Required for Production
@@ -225,43 +267,51 @@ pm2 startup
 # Follow the command it outputs
 ```
 
-### Step 6: Configure Nginx (Optional but Recommended)
+### Step 6: Configure Nginx (Required for HTTPS)
 
-If you want a reverse proxy and HTTPS:
+**⚠️ IMPORTANT:** Nginx is required to set up HTTPS. If your frontend uses HTTPS, you MUST configure HTTPS for your backend API.
 
 ```bash
 # Install Nginx
 sudo yum install -y nginx  # Amazon Linux
 # sudo apt install -y nginx  # Ubuntu
 
-# Create Nginx config
+# Copy Nginx configuration
+cd ~/operion/Backend
+sudo cp deploy/nginx-config.conf /etc/nginx/conf.d/operion.conf
+
+# Edit configuration (replace 'your-domain.com' with your API domain)
 sudo nano /etc/nginx/conf.d/operion.conf
-```
 
-Add:
-```nginx
-server {
-    listen 80;
-    server_name your-domain.com;
+# Test configuration
+sudo nginx -t
 
-    location / {
-        proxy_pass http://localhost:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
-    }
-}
-```
-
-Restart Nginx:
-```bash
+# Restart Nginx
 sudo systemctl restart nginx
 sudo systemctl enable nginx
 ```
 
-### Step 7: Verify Deployment
+### Step 7: Set Up HTTPS/SSL (Required for Production)
+
+**If your frontend is on HTTPS, you MUST set up HTTPS for your backend:**
+
+1. **Create DNS A Record** pointing to your EC2 IP (e.g., `api.cascade-erp.in` → `3.107.223.34`)
+
+2. **Run SSL setup script:**
+   ```bash
+   cd ~/operion/Backend/deploy
+   chmod +x ssl-setup.sh
+   sudo ./ssl-setup.sh
+   ```
+   Enter your API domain when prompted (e.g., `api.cascade-erp.in`)
+
+3. **Update frontend to use HTTPS API URL:**
+   - Change from: `http://3.107.223.34:3000`
+   - To: `https://api.yourdomain.com`
+
+For detailed instructions, see: **[deploy/HTTPS_SETUP_GUIDE.md](./deploy/HTTPS_SETUP_GUIDE.md)**
+
+### Step 8: Verify Deployment
 
 ```bash
 # Check PM2 status
@@ -270,10 +320,11 @@ pm2 status
 # Check logs
 npm run pm2:logs
 
-# Test health endpoint
+# Test health endpoint (local)
 curl http://localhost:3000/health
-# Or if using Nginx:
-curl http://your-domain.com/health
+
+# Test health endpoint (via HTTPS - after SSL setup)
+curl https://api.yourdomain.com/health
 ```
 
 ## MongoDB Atlas Configuration
@@ -324,6 +375,15 @@ mongodb+srv://username:password@cluster.mongodb.net/operion_prod?retryWrites=tru
 
 ## Security Configuration
 
+### HTTPS/SSL Setup
+
+**⚠️ CRITICAL:** If your frontend uses HTTPS, your backend MUST also use HTTPS. See [HTTPS_SETUP_GUIDE.md](./deploy/HTTPS_SETUP_GUIDE.md) for complete setup instructions.
+
+**Quick Setup:**
+1. Create DNS A record: `api.yourdomain.com` → EC2 IP
+2. Run: `sudo ./deploy/ssl-setup.sh`
+3. Update frontend API URL to use HTTPS
+
 ### AWS Security Groups
 
 #### Elastic Beanstalk Security Group:
@@ -336,9 +396,9 @@ mongodb+srv://username:password@cluster.mongodb.net/operion_prod?retryWrites=tru
 #### EC2 Security Group:
 - **Inbound:**
   - SSH (22) from your IP only (restrict for security)
-  - HTTP (80) from `0.0.0.0/0`
-  - HTTPS (443) from `0.0.0.0/0`
-  - Custom TCP (3000) from your load balancer or `0.0.0.0/0` for testing
+  - **HTTP (80) from `0.0.0.0/0`** (Required for Let's Encrypt SSL certificate)
+  - **HTTPS (443) from `0.0.0.0/0`** (Required for API access)
+  - Custom TCP (3000) from `127.0.0.1` only (only accessible via Nginx reverse proxy)
 - **Outbound:**
   - All traffic (or restrict to MongoDB Atlas, S3 IPs)
 
@@ -456,6 +516,17 @@ pm2 env 0  # Shows environment variables for PM2 process
    - Port conflict (ensure PORT matches platform: 8080 for EB, 3000 for EC2)
    - JWT secrets too short or weak (must be 32+ characters)
 
+### Mixed Content Errors (HTTPS Required)
+
+**Error:** "Mixed Content: The page was loaded over HTTPS, but requested an insecure resource"
+
+**Cause:** Frontend is HTTPS but backend API is HTTP. Browsers block this.
+
+**Solution:**
+1. Set up HTTPS for your backend API (see [HTTPS_SETUP_GUIDE.md](./deploy/HTTPS_SETUP_GUIDE.md))
+2. Update frontend to use HTTPS API URL: `https://api.yourdomain.com`
+3. Verify: `curl https://api.yourdomain.com/health`
+
 ### CORS Errors
 
 1. **Check CORS_ORIGINS:**
@@ -472,6 +543,7 @@ pm2 env 0  # Shows environment variables for PM2 process
 
 3. **Fix:**
    - Update CORS_ORIGINS to include: `https://your-app.vercel.app`
+   - Ensure API URL uses HTTPS: `https://api.yourdomain.com`
    - Restart application
 
 ### Database Connection Failed
