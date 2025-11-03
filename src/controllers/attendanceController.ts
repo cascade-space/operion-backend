@@ -323,8 +323,35 @@ export const getTodayAttendance = async (req: AuthRequest, res: Response): Promi
   try {
     const { employeeId } = req.params;
     
+    // Convert employeeId to ObjectId for proper comparison
+    let queryEmployeeId: mongoose.Types.ObjectId;
+    try {
+      queryEmployeeId = new mongoose.Types.ObjectId(employeeId);
+    } catch (error) {
+      logger.error('Invalid employeeId format in getTodayAttendance', {
+        employeeId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      const response: ApiResponse = {
+        success: false,
+        error: 'Invalid employee ID format',
+        status: 400
+      };
+      res.status(400).json(response);
+      return;
+    }
+    
     // Check if user has access to this employee's data
-    if (req.user && req.user.role === 'employee' && req.user.id !== employeeId) {
+    // Compare ObjectIds properly - use _id instead of id
+    const userEmployeeIdStr = req.user?._id?.toString();
+    const paramEmployeeIdStr = queryEmployeeId.toString();
+    
+    if (req.user && req.user.role === 'employee' && userEmployeeIdStr !== paramEmployeeIdStr) {
+      logger.error('Access denied - employee ID mismatch in getTodayAttendance', {
+        userEmployeeId: userEmployeeIdStr,
+        paramEmployeeId: paramEmployeeIdStr,
+        userId: req.user.id
+      });
       const response: ApiResponse = {
         success: false,
         error: 'Access denied - You can only view your own attendance',
@@ -340,7 +367,7 @@ export const getTodayAttendance = async (req: AuthRequest, res: Response): Promi
     tomorrow.setDate(tomorrow.getDate() + 1);
 
     const attendance = await Attendance.findOne({
-      employeeId,
+      employeeId: queryEmployeeId,
       $or: [
         {
           date: {
@@ -372,7 +399,7 @@ export const getTodayAttendance = async (req: AuthRequest, res: Response): Promi
 
     // Get work entries for today to calculate check-in and check-out times
     const workEntries = await WorkEntry.find({
-      employeeId,
+      employeeId: queryEmployeeId,
       startTime: {
         $gte: today,
         $lt: tomorrow
