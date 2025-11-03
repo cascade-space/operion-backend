@@ -863,6 +863,7 @@ export const directWorkEntry = async (req: AuthRequest, res: Response): Promise<
     }
 
     // Get or create current attendance record
+    // IMPORTANT: Always prefer existing attendance from check-in to avoid duplicates
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
@@ -874,25 +875,60 @@ export const directWorkEntry = async (req: AuthRequest, res: Response): Promise<
         $gte: today,
         $lt: tomorrow
       }
-    });
+    }).sort({ createdAt: -1 }); // Get most recent attendance if multiple exist
 
     if (!currentAttendance) {
-      // Auto-create attendance record with required fields
-      currentAttendance = new Attendance({
-        employeeId: verifiedEmployeeId,
-        factoryId: employee.factoryId,
-        processId: processId,
-        shiftType: shiftType || 'General',
-        target: (product.dailyTarget || 0),
-        checkIn: {
-          time: new Date(),
-          location: location || { latitude: 0, longitude: 0 },
-          isWithinGeofence: true
-        },
-        status: 'present',
-        date: today
+      // Only auto-create attendance if no check-in exists (user skipped check-in)
+      // This should be rare but allows flexibility
+      logger.warn('Auto-creating attendance record during work entry (check-in may have been skipped)', {
+        employeeId: verifiedEmployeeId.toString(),
+        processId: processId.toString()
       });
-      await currentAttendance.save();
+      
+      try {
+        currentAttendance = new Attendance({
+          employeeId: verifiedEmployeeId,
+          factoryId: employee.factoryId,
+          processId: processId,
+          shiftType: shiftType || 'General',
+          target: (product.dailyTarget || 0),
+          checkIn: {
+            time: new Date(),
+            location: location || { latitude: 0, longitude: 0 },
+            isWithinGeofence: true
+          },
+          status: 'present',
+          date: today
+        });
+        await currentAttendance.save();
+        logger.info('Attendance record auto-created during work entry', {
+          attendanceId: currentAttendance._id.toString()
+        });
+      } catch (attendanceError: any) {
+        logger.error('Failed to auto-create attendance record', {
+          error: attendanceError.message,
+          stack: attendanceError.stack,
+          employeeId: verifiedEmployeeId.toString()
+        });
+        // If creation fails (e.g., duplicate), try to find it again
+        currentAttendance = await Attendance.findOne({
+          employeeId: verifiedEmployeeId,
+          date: {
+            $gte: today,
+            $lt: tomorrow
+          }
+        }).sort({ createdAt: -1 });
+        
+        if (!currentAttendance) {
+          const response: ApiResponse = {
+            success: false,
+            error: 'Failed to create or find attendance record. Please check in first.',
+            status: 500
+          };
+          res.status(500).json(response);
+          return;
+        }
+      }
     } else {
       // Ensure required fields exist on existing attendance
       let needsUpdate = false;
@@ -904,9 +940,35 @@ export const directWorkEntry = async (req: AuthRequest, res: Response): Promise<
         (currentAttendance as any).target = (product.dailyTarget || 0);
         needsUpdate = true;
       }
-      if (needsUpdate) {
-        await currentAttendance.save();
+      // Ensure check-in exists
+      if (!currentAttendance.checkIn?.time) {
+        logger.warn('Existing attendance missing check-in, updating', {
+          attendanceId: currentAttendance._id.toString()
+        });
+        currentAttendance.checkIn = {
+          time: currentAttendance.date || new Date(),
+          location: location || currentAttendance.checkIn?.location || { latitude: 0, longitude: 0 },
+          isWithinGeofence: true
+        };
+        needsUpdate = true;
       }
+      if (needsUpdate) {
+        try {
+          await currentAttendance.save();
+        } catch (updateError: any) {
+          logger.error('Failed to update attendance record', {
+            error: updateError.message,
+            attendanceId: currentAttendance._id.toString()
+          });
+          // Continue anyway - attendance exists and can be used
+        }
+      }
+      
+      logger.debug('Using existing attendance record for work entry', {
+        attendanceId: currentAttendance._id.toString(),
+        employeeId: verifiedEmployeeId.toString(),
+        hasCheckIn: !!currentAttendance.checkIn?.time
+      });
     }
 
     // Create work entry directly

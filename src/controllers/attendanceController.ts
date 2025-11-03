@@ -719,6 +719,7 @@ export const checkOut = async (req: AuthRequest, res: Response): Promise<void> =
 
     const { location } = req.body;
     const { id: attendanceId } = req.params;
+    
     if (!req.user) {
       const response: ApiResponse = {
         success: false,
@@ -729,31 +730,128 @@ export const checkOut = async (req: AuthRequest, res: Response): Promise<void> =
       return;
     }
 
-    const employeeId = req.user.id;
-
-    // Find the specific attendance record
-    const attendance = await Attendance.findOne({
-      _id: attendanceId,
-      employeeId,
-      status: 'present'
-    });
-
-    if (!attendance) {
+    // Validate attendanceId format
+    if (!mongoose.Types.ObjectId.isValid(attendanceId)) {
+      logger.warn('Check-out error: Invalid attendance ID format', { attendanceId });
       const response: ApiResponse = {
         success: false,
-        error: 'Attendance record not found or access denied',
-        status: 404
+        error: 'Invalid attendance ID format',
+        status: 400
       };
-      res.status(404).json(response);
+      res.status(400).json(response);
       return;
     }
 
+    const employeeId = req.user.id;
+
+    // Find attendance record - be more flexible: find by ID first, then validate ownership
+    // Remove strict status requirement to allow check-out even if status changed
+    let attendance = await Attendance.findById(attendanceId);
+
+    if (!attendance) {
+      logger.warn('Check-out error: Attendance record not found', { 
+        attendanceId, 
+        employeeId,
+        attemptedLookup: 'by ID only'
+      });
+      
+      // Try to find today's attendance for this employee as fallback
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      
+      attendance = await Attendance.findOne({
+        employeeId,
+        date: {
+          $gte: today,
+          $lt: tomorrow
+        },
+        checkOut: { $exists: false } // Only if not already checked out
+      });
+
+      if (!attendance) {
+        const response: ApiResponse = {
+          success: false,
+          error: 'Attendance record not found. Please ensure you have checked in today.',
+          status: 404
+        };
+        res.status(404).json(response);
+        return;
+      }
+      
+      logger.info('Check-out: Found attendance record using fallback (today\'s attendance)', {
+        attendanceId: attendance._id,
+        requestedId: attendanceId,
+        employeeId
+      });
+    }
+
+    // Validate ownership - ensure this attendance belongs to the requesting employee
+    if (attendance.employeeId.toString() !== employeeId.toString()) {
+      logger.warn('Check-out error: Attendance access denied', { 
+        attendanceId: attendance._id, 
+        attendanceEmployeeId: attendance.employeeId,
+        requestingEmployeeId: employeeId
+      });
+      const response: ApiResponse = {
+        success: false,
+        error: 'Access denied: This attendance record does not belong to you',
+        status: 403
+      };
+      res.status(403).json(response);
+      return;
+    }
+
+    // Prevent duplicate check-out
+    if (attendance.checkOut?.time) {
+      logger.warn('Check-out error: Already checked out', { 
+        attendanceId: attendance._id,
+        existingCheckOutTime: attendance.checkOut.time
+      });
+      const response: ApiResponse = {
+        success: false,
+        error: 'You have already checked out for today',
+        status: 409
+      };
+      res.status(409).json(response);
+      return;
+    }
+
+    // Ensure check-in exists
+    if (!attendance.checkIn?.time) {
+      logger.error('Check-out error: No check-in found for attendance', { 
+        attendanceId: attendance._id 
+      });
+      const response: ApiResponse = {
+        success: false,
+        error: 'Invalid attendance record: Check-in time is missing',
+        status: 400
+      };
+      res.status(400).json(response);
+      return;
+    }
+
+    const checkOutTime = new Date();
+
     // Update attendance with check-out
     attendance.checkOut = {
-      time: new Date(),
-      location
+      time: checkOutTime,
+      location: location || attendance.checkIn.location // Use provided location or fallback to check-in location
     };
     attendance.status = 'present'; // Keep as present since work is completed
+
+    // Calculate work hours using the model method
+    const workHours = (attendance as any).calculateWorkHours ? (attendance as any).calculateWorkHours() : 
+      (attendance.checkOut.time.getTime() - attendance.checkIn.time.getTime()) / (1000 * 60 * 60);
+    
+    logger.info('Check-out successful', {
+      attendanceId: attendance._id,
+      employeeId,
+      checkInTime: attendance.checkIn.time,
+      checkOutTime,
+      workHours: workHours.toFixed(2)
+    });
 
     await attendance.save();
 
@@ -766,12 +864,20 @@ export const checkOut = async (req: AuthRequest, res: Response): Promise<void> =
       success: true,
       message: 'Check-out successful',
       status: 200,
-      data: populatedAttendance
+      data: {
+        ...populatedAttendance?.toObject(),
+        workHours: workHours.toFixed(2)
+      }
     };
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Check-out error', { error: error.message, stack: error.stack });
+    logger.error('Check-out error', { 
+      error: error.message, 
+      stack: error.stack,
+      attendanceId: req.params?.id,
+      employeeId: req.user?.id
+    });
     const response: ApiResponse = {
       success: false,
       error: 'Failed to check out',
