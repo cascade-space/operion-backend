@@ -124,7 +124,10 @@ const getCorsOrigins = (): string[] => {
   ];
   
   if (env.CORS_ORIGINS) {
-    const envOrigins = env.CORS_ORIGINS.split(',').map(origin => origin.trim());
+    const envOrigins = env.CORS_ORIGINS.split(',')
+      .map(origin => origin.trim())
+      .map(origin => origin.replace(/\/+$/, '')) // Remove trailing slashes
+      .filter(origin => origin.length > 0); // Remove empty strings
     // In development, merge with default origins to ensure localhost works
     if (env.NODE_ENV === 'development') {
       const merged = [...new Set([...defaultDevOrigins, ...envOrigins])];
@@ -209,13 +212,16 @@ const corsOptions = {
       return callback(new Error('CORS not configured'));
     }
     
-    if (allowedOrigins.indexOf(origin) !== -1) {
+    // Normalize origin (remove trailing slashes) for comparison
+    const normalizedOrigin = origin.replace(/\/+$/, '');
+    
+    if (allowedOrigins.indexOf(normalizedOrigin) !== -1 || allowedOrigins.indexOf(origin) !== -1) {
       if (env.NODE_ENV === 'development') {
-        logger.info('CORS: Allowing origin', { origin, allowedOrigins });
+        logger.info('CORS: Allowing origin', { origin, normalizedOrigin, allowedOrigins });
       }
       callback(null, true);
     } else {
-      logger.warn('CORS: Blocking origin', { origin, allowedOrigins });
+      logger.warn('CORS: Blocking origin', { origin, normalizedOrigin, allowedOrigins });
       callback(new Error(`Not allowed by CORS. Origin: ${origin} not in allowed list: ${allowedOrigins.join(', ')}`));
     }
   },

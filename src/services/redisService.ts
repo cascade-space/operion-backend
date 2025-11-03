@@ -138,14 +138,93 @@ class RedisService {
     }
 
     try {
-      // ioredis connects automatically, but we can verify with ping
-      // For lazyConnect: true, we trigger connection by calling a command
+      // With lazyConnect: true and enableOfflineQueue: false, we need to wait
+      // for the connection to be ready before sending commands
+      await new Promise<void>((resolve, reject) => {
+        // Check if already ready
+        if (this.client?.status === 'ready') {
+          resolve();
+          return;
+        }
+
+        const timeout = setTimeout(() => {
+          this.client?.off('ready', readyHandler);
+          this.client?.off('error', errorHandler);
+          reject(new Error('Redis connection timeout'));
+        }, 10000);
+
+        const readyHandler = () => {
+          clearTimeout(timeout);
+          this.client?.off('ready', readyHandler);
+          this.client?.off('error', errorHandler);
+          resolve();
+        };
+
+        const errorHandler = (error: Error) => {
+          clearTimeout(timeout);
+          this.client?.off('ready', readyHandler);
+          this.client?.off('error', errorHandler);
+          reject(error);
+        };
+
+        this.client?.once('ready', readyHandler);
+        this.client?.once('error', errorHandler);
+
+        // Trigger connection if not already connecting/connected
+        if (this.client?.status === 'wait' || this.client?.status === 'end') {
+          this.client.connect().catch(() => {
+            // Error will be handled by errorHandler
+          });
+        } else if (this.client?.status === 'connecting') {
+          // Already connecting, just wait
+        }
+      });
+
+      // Now verify with ping
       await this.client.ping();
       
+      // Connect subscriber and publisher
       if (this.subscriber) {
+        await new Promise<void>((resolve, reject) => {
+          if (this.subscriber?.status === 'ready') {
+            resolve();
+            return;
+          }
+          const timeout = setTimeout(() => reject(new Error('Subscriber timeout')), 5000);
+          this.subscriber?.once('ready', () => {
+            clearTimeout(timeout);
+            resolve();
+          });
+          this.subscriber?.once('error', (err) => {
+            clearTimeout(timeout);
+            reject(err);
+          });
+          if (this.subscriber?.status === 'wait' || this.subscriber?.status === 'end') {
+            this.subscriber.connect().catch(() => {});
+          }
+        });
         await this.subscriber.ping();
       }
+      
       if (this.publisher) {
+        await new Promise<void>((resolve, reject) => {
+          if (this.publisher?.status === 'ready') {
+            resolve();
+            return;
+          }
+          const timeout = setTimeout(() => reject(new Error('Publisher timeout')), 5000);
+          this.publisher?.once('ready', () => {
+            clearTimeout(timeout);
+            resolve();
+          });
+          this.publisher?.once('error', (err) => {
+            clearTimeout(timeout);
+            reject(err);
+          });
+          if (this.publisher?.status === 'wait' || this.publisher?.status === 'end') {
+            this.publisher.connect().catch(() => {});
+          }
+        });
         await this.publisher.ping();
       }
       
@@ -154,7 +233,8 @@ class RedisService {
     } catch (error) {
       console.error('Redis: Connection error:', error);
       this.isConnected = false;
-      throw error;
+      // Don't throw - Redis is optional
+      // throw error;
     }
   }
 

@@ -23,7 +23,8 @@ This guide provides step-by-step instructions for deploying the Operion backend 
 
 ## Environment Variables Checklist
 
-### Required for Production
+### git pull
+Required for Production
 
 Copy `env.production.example` to `.env.production` and configure these variables:
 
