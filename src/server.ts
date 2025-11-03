@@ -43,6 +43,10 @@ const app = express();
 const server = createServer(app);
 const PORT = env.PORT;
 
+// Trust proxy - Required when behind nginx reverse proxy
+// This allows Express to read X-Forwarded-For headers correctly
+app.set('trust proxy', true);
+
 // Export app for testing
 export { app };
 
