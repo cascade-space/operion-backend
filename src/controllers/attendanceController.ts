@@ -486,7 +486,10 @@ export const checkIn = async (req: AuthRequest, res: Response): Promise<void> =>
   try {
     logger.debug('Check-in request received', {
       userId: req.user?.id,
-      role: req.user?.role
+      user_id: (req.user as any)?._id,
+      role: req.user?.role,
+      bodyEmployeeId: req.body.employeeId,
+      requestBody: req.body
     });
 
     const errors = validationResult(req);
@@ -502,7 +505,7 @@ export const checkIn = async (req: AuthRequest, res: Response): Promise<void> =>
       return;
     }
 
-    const { processId, location } = req.body;
+    const { processId, location, shiftType: requestShiftType, target } = req.body;
     if (!req.user) {
       const response: ApiResponse = {
         success: false,
@@ -513,7 +516,45 @@ export const checkIn = async (req: AuthRequest, res: Response): Promise<void> =>
       return;
     }
 
-    const employeeId = req.user.id;
+    // Get employeeId from request body (preferred) or fallback to authenticated user
+    // Frontend sends employeeId in the request body
+    let employeeId = req.body.employeeId || req.user.id || (req.user as any)._id;
+    
+    // Validate employeeId is present and valid MongoDB ObjectId
+    if (!employeeId) {
+      logger.error('Check-in error: employeeId not found', {
+        hasBodyEmployeeId: !!req.body.employeeId,
+        hasUser: !!req.user,
+        userId: req.user.id,
+        user_id: (req.user as any)._id,
+        requestBody: req.body
+      });
+      const response: ApiResponse = {
+        success: false,
+        error: 'Employee ID is required',
+        status: 400
+      };
+      res.status(400).json(response);
+      return;
+    }
+
+    // Ensure employeeId is a valid MongoDB ObjectId
+    if (!mongoose.Types.ObjectId.isValid(employeeId)) {
+      logger.error('Check-in error: Invalid employeeId format', {
+        employeeId,
+        employeeIdType: typeof employeeId
+      });
+      const response: ApiResponse = {
+        success: false,
+        error: 'Invalid employee ID format',
+        status: 400
+      };
+      res.status(400).json(response);
+      return;
+    }
+
+    // Convert to ObjectId
+    employeeId = new mongoose.Types.ObjectId(employeeId);
 
     // Check if employee already has an active attendance record today
     const today = new Date();
@@ -556,6 +597,17 @@ export const checkIn = async (req: AuthRequest, res: Response): Promise<void> =>
     
     // Get factory information for basic geofence check
     const employee = await User.findById(employeeId).populate('factoryId');
+    if (!employee) {
+      logger.error('Check-in error: Employee not found', { employeeId });
+      const response: ApiResponse = {
+        success: false,
+        error: 'Employee not found',
+        status: 404
+      };
+      res.status(404).json(response);
+      return;
+    }
+
     if (employee?.factoryId && (employee.factoryId as any).geofence) {
       const factory = employee.factoryId as any;
       if (factory.geofence && factory.settings?.geofencingEnabled !== false) {
@@ -563,21 +615,27 @@ export const checkIn = async (req: AuthRequest, res: Response): Promise<void> =>
       }
     }
     
-    // Get current shift type
-    const currentHour = new Date().getHours();
+    // Get shift type from request body (preferred) or calculate from current hour
     let shiftType: 'morning' | 'evening' | 'night';
-    if (currentHour >= 6 && currentHour < 14) {
-      shiftType = 'morning';
-    } else if (currentHour >= 14 && currentHour < 22) {
-      shiftType = 'evening';
+    if (requestShiftType && ['morning', 'evening', 'night'].includes(requestShiftType)) {
+      // Use shiftType from request body
+      shiftType = requestShiftType;
     } else {
-      shiftType = 'night';
+      // Calculate shift type from current hour (fallback)
+      const currentHour = new Date().getHours();
+      if (currentHour >= 6 && currentHour < 14) {
+        shiftType = 'morning';
+      } else if (currentHour >= 14 && currentHour < 22) {
+        shiftType = 'evening';
+      } else {
+        shiftType = 'night';
+      }
     }
 
     const attendance = new Attendance({
       employeeId,
       processId,
-      factoryId: req.user.factoryId,
+      factoryId: req.user.factoryId || employee.factoryId,
       date: new Date(),
       checkIn: {
         time: new Date(),
@@ -587,7 +645,7 @@ export const checkIn = async (req: AuthRequest, res: Response): Promise<void> =>
         isWithinGeofence: isWithinGeofence
       },
       shiftType: shiftType,
-      target: req.body.target || 0,
+      target: target || 0,
       status: 'present'
     });
 
