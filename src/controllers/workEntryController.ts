@@ -1247,32 +1247,73 @@ export const getWorkEntriesByEmployee = async (req: AuthRequest, res: Response):
   try {
     const { employeeId } = req.params;
     const { startDate, endDate, status, page = 1, limit = 10, today = 'true' } = req.query;
-    const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
+    
+    // Convert employeeId to ObjectId explicitly
+    let queryEmployeeId: mongoose.Types.ObjectId;
+    try {
+      queryEmployeeId = new mongoose.Types.ObjectId(employeeId);
+    } catch (error) {
+      logger.error('Invalid employeeId format in getWorkEntriesByEmployee', {
+        employeeId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      const response: ApiResponse = {
+        success: false,
+        error: 'Invalid employee ID format',
+        status: 400
+      };
+      res.status(400).json(response);
+      return;
+    }
 
-    let query: any = { employeeId };
+    // Determine limit - remove limit when today=true to get all today's entries
+    const queryLimit = today === 'true' ? undefined : parseInt(limit as string);
+    const querySkip = today === 'true' ? 0 : (parseInt(page as string) - 1) * parseInt(limit as string);
+
+    let query: any = { employeeId: queryEmployeeId };
     
     // Filter by factory if user is not super admin
     if (req.user.role !== 'super_admin') {
-      query.factoryId = req.user.factoryId;
+      if (req.user.factoryId) {
+        query.factoryId = req.user.factoryId;
+      }
     }
 
-    // Filter by date range - default to today if no dates provided and today=true
+    // Filter by date range - use startTime instead of createdAt for more accurate filtering
     if (startDate && endDate) {
-      query.createdAt = {
-        $gte: new Date(startDate as string),
-        $lte: new Date(endDate as string)
-      };
-    } else if (today === 'true') {
-      // Default to today's data
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
+      const start = new Date(startDate as string);
+      const end = new Date(endDate as string);
+      end.setHours(23, 59, 59, 999);
       
-      query.createdAt = {
-        $gte: today,
-        $lt: tomorrow
-      };
+      // Filter by startTime (preferred) or createdAt (fallback)
+      query.$or = [
+        { startTime: { $gte: start, $lte: end } },
+        { createdAt: { $gte: start, $lte: end } }
+      ];
+    } else if (today === 'true') {
+      // Default to today's data - filter by startTime (preferred) or createdAt
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const todayEnd = new Date(todayStart);
+      todayEnd.setDate(todayEnd.getDate() + 1);
+      todayEnd.setMilliseconds(todayEnd.getMilliseconds() - 1);
+      
+      // Use startTime for filtering (more accurate for work entries)
+      // Fallback to createdAt if startTime is not available
+      query.$or = [
+        { startTime: { $gte: todayStart, $lt: todayEnd } },
+        { 
+          startTime: { $exists: false },
+          createdAt: { $gte: todayStart, $lt: todayEnd }
+        }
+      ];
+      
+      logger.debug('Filtering work entries for today', {
+        employeeId: queryEmployeeId.toString(),
+        todayStart: todayStart.toISOString(),
+        todayEnd: todayEnd.toISOString(),
+        factoryId: query.factoryId?.toString()
+      });
     } else if (today === 'false') {
       // Don't apply any date filter - return all entries
       // This allows the frontend to get all entries when needed
@@ -1283,16 +1324,35 @@ export const getWorkEntriesByEmployee = async (req: AuthRequest, res: Response):
       query.validationStatus = status;
     }
 
-    const workEntries = await WorkEntry.find(query)
+    logger.debug('Querying work entries', {
+      employeeId: queryEmployeeId.toString(),
+      query: JSON.stringify(query),
+      limit: queryLimit,
+      skip: querySkip
+    });
+
+    let workEntriesQuery = WorkEntry.find(query)
       .populate('employeeId', 'profile.firstName profile.lastName email')
       .populate('processId', 'name')
+      .populate('productId', 'name code')
+      .populate('machineId', 'name code')
       .populate('validatedBy', 'profile.firstName profile.lastName')
       .populate('factoryId', 'name')
-      .skip(skip)
-      .limit(parseInt(limit as string))
-      .sort({ createdAt: -1 });
+      .sort({ startTime: -1, createdAt: -1 });
 
+    if (queryLimit) {
+      workEntriesQuery = workEntriesQuery.skip(querySkip).limit(queryLimit);
+    }
+
+    const workEntries = await workEntriesQuery;
     const total = await WorkEntry.countDocuments(query);
+
+    logger.debug('Work entries retrieved', {
+      employeeId: queryEmployeeId.toString(),
+      count: workEntries.length,
+      total,
+      hasEntries: workEntries.length > 0
+    });
 
     const response: ApiResponse = {
       success: true,
@@ -1302,16 +1362,21 @@ export const getWorkEntriesByEmployee = async (req: AuthRequest, res: Response):
         workEntries,
         pagination: {
           page: parseInt(page as string),
-          limit: parseInt(limit as string),
+          limit: queryLimit || total,
           total,
-          pages: Math.ceil(total / parseInt(limit as string))
+          pages: queryLimit ? Math.ceil(total / queryLimit) : 1
         }
       }
     };
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Get employee work entries error', { error: error instanceof Error ? error.message : String(error) });
+    logger.error('Get employee work entries error', {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      employeeId: req.params.employeeId,
+      query: req.query
+    });
     const response: ApiResponse = {
       success: false,
       error: 'Failed to retrieve employee work entries',
