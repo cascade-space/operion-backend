@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Request, Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
@@ -103,10 +103,24 @@ if (env.NODE_ENV === 'production') {
     logger.error('⚠️  CRITICAL: CORS_ORIGINS is not set in production!');
     logger.error('⚠️  Your frontend will be blocked from making requests.');
     logger.error('⚠️  Set CORS_ORIGINS environment variable with your frontend URL(s).');
-    logger.error('⚠️  Example: CORS_ORIGINS=https://app.yourdomain.com,https://your-app.vercel.app');
+    logger.error('⚠️  Example: CORS_ORIGINS=https://www.cascade-erp.in,https://cascade-erp.in');
+    logger.error('⚠️  Format: comma-separated URLs, no spaces, no trailing slashes');
     logger.warn('⚠️  Server will start but CORS will reject all requests until configured.');
   } else {
     logger.info('✅ CORS configured for production origins:', { origins: allowedOrigins });
+    
+    // Warn if common production domains are missing
+    const commonDomains = ['https://www.cascade-erp.in', 'https://cascade-erp.in'];
+    const missingDomains = commonDomains.filter(domain => 
+      !allowedOrigins.some(origin => origin === domain || origin.includes(domain.replace('https://', '')))
+    );
+    
+    if (missingDomains.length > 0) {
+      logger.warn('⚠️  Common production domains not found in CORS_ORIGINS:', { 
+        missing: missingDomains,
+        suggestion: `Consider adding: ${missingDomains.join(', ')}`
+      });
+    }
   }
 } else {
   // In development, log the configuration
@@ -181,12 +195,31 @@ const rateLimitMax = isDevelopment
   ? 10000 // 10,000 requests per window in development (effectively unlimited)
   : env.RATE_LIMIT_MAX_REQUESTS; // Use configured limit in production
 
+// Helper to add CORS headers to rate limit responses (for express-rate-limit)
+const addCorsToRateLimitResponse = (req: Request, res: Response) => {
+  const origin = req.headers.origin;
+  if (!origin) return;
+  
+  const normalizedOrigin = origin.replace(/\/+$/, '');
+  const isAllowed = allowedOrigins.length > 0 && 
+    (allowedOrigins.indexOf(normalizedOrigin) !== -1 || 
+     allowedOrigins.indexOf(origin) !== -1);
+  
+  if (isAllowed || allowedOrigins.length === 0) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, Access-Control-Request-Method, Access-Control-Request-Headers');
+  }
+};
+
 if (useRedisRateLimit && redisService.getConnectionStatus()) {
   // Use Redis-based rate limiting for distributed systems
   const redisLimiter = createRateLimiter({
     windowMs: rateLimitWindowMs,
     max: rateLimitMax,
     message: 'Too many requests from this IP, please try again later.',
+    allowedOrigins: allowedOrigins, // Pass allowed origins to rate limiter for CORS headers
     skip: (req) => {
       // Skip rate limiting for health check endpoint and in development
       return req.path === '/health' || isDevelopment;
@@ -195,6 +228,7 @@ if (useRedisRateLimit && redisService.getConnectionStatus()) {
   app.use(redisLimiter);
 } else {
   // Fallback to memory-based rate limiting
+  // Note: express-rate-limit doesn't support CORS headers directly, so we need a wrapper
   const limiter = rateLimit({
     windowMs: rateLimitWindowMs,
     max: rateLimitMax,
@@ -205,6 +239,16 @@ if (useRedisRateLimit && redisService.getConnectionStatus()) {
     },
     standardHeaders: true,
     legacyHeaders: false,
+    handler: (req: Request, res: Response) => {
+      // Add CORS headers before sending rate limit response
+      addCorsToRateLimitResponse(req, res);
+      
+      res.status(429).json({
+        success: false,
+        error: 'Too many requests from this IP, please try again later.',
+        status: 429
+      });
+    },
     skip: (req) => {
       // Skip rate limiting for health check endpoint
       // Note: We're already using high limits in development, so skip is mainly for health checks
