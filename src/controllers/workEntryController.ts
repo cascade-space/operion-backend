@@ -738,7 +738,8 @@ export const directWorkEntry = async (req: AuthRequest, res: Response): Promise<
     // Get employee info - use _id (ObjectId) to ensure proper lookup
     // Since req.user is already loaded from authentication, we can use it directly
     // But we fetch again to ensure we have the latest data with all relationships
-    const employee = await User.findById(req.user._id).populate('factoryId');
+    // Don't populate factoryId - we just need the ObjectId for comparison
+    const employee = await User.findById(req.user._id);
     if (!employee) {
       logger.error('Employee lookup failed', {
         employeeId: employeeId?.toString(),
@@ -756,17 +757,44 @@ export const directWorkEntry = async (req: AuthRequest, res: Response): Promise<
       return;
     }
     
+    // Extract factory ID - should be ObjectId since we didn't populate it
+    const employeeFactoryId = employee.factoryId?.toString();
+    
+    // Validate employee has a factory ID (required for employees)
+    if (!employeeFactoryId) {
+      logger.error('Employee missing factoryId', {
+        employeeId: employee._id.toString(),
+        role: employee.role
+      });
+      const response: ApiResponse = {
+        success: false,
+        error: 'Employee factory assignment not found',
+        status: 400
+      };
+      res.status(400).json(response);
+      return;
+    }
+    
     logger.debug('Employee found successfully', {
       employeeId: employee._id.toString(),
-      factoryId: employee.factoryId?.toString(),
-      role: employee.role
+      factoryId: employeeFactoryId,
+      role: employee.role,
+      processFactoryId: process.factoryId?.toString(),
+      productFactoryId: product.factoryId?.toString()
     });
 
     // Use employee._id for consistency after verification
     const verifiedEmployeeId = employee._id;
 
     // Check if process belongs to the employee's factory
-    if (process.factoryId?.toString() !== employee.factoryId?.toString()) {
+    const processFactoryIdStr = process.factoryId?.toString();
+    if (!processFactoryIdStr || processFactoryIdStr !== employeeFactoryId) {
+      logger.error('Factory ID mismatch - Process', {
+        processFactoryId: processFactoryIdStr,
+        employeeFactoryId: employeeFactoryId,
+        processId: process._id.toString(),
+        processName: process.name
+      });
       const response: ApiResponse = {
         success: false,
         error: 'Process does not belong to your factory',
@@ -777,7 +805,14 @@ export const directWorkEntry = async (req: AuthRequest, res: Response): Promise<
     }
 
     // Check if product belongs to the employee's factory
-    if (product.factoryId?.toString() !== employee.factoryId?.toString()) {
+    const productFactoryIdStr = product.factoryId?.toString();
+    if (!productFactoryIdStr || productFactoryIdStr !== employeeFactoryId) {
+      logger.error('Factory ID mismatch - Product', {
+        productFactoryId: productFactoryIdStr,
+        employeeFactoryId: employeeFactoryId,
+        productId: product._id.toString(),
+        productName: product.name
+      });
       const response: ApiResponse = {
         success: false,
         error: 'Product does not belong to your factory',
