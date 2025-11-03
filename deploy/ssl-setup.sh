@@ -126,11 +126,10 @@ if [ -f "$NGINX_CONFIG" ]; then
     # Backup original config
     cp "$NGINX_CONFIG" "${NGINX_CONFIG}.backup.$(date +%Y%m%d_%H%M%S)"
     
-    # Update server_name in all server blocks
+    # Update server_name in HTTP server block (replace your-domain.com)
     sed -i "s/server_name.*your-domain.com.*/server_name $DOMAIN_NAME;/g" "$NGINX_CONFIG"
-    sed -i "s/server_name.*[^;]$/server_name $DOMAIN_NAME;/g" "$NGINX_CONFIG" || true
     
-    # Test Nginx configuration
+    # Test Nginx configuration (before SSL, should only have HTTP block)
     if nginx -t; then
         echo "✅ Nginx configuration is valid"
         systemctl reload nginx || systemctl restart nginx
@@ -166,6 +165,16 @@ if certbot --nginx -d $DOMAIN_NAME --non-interactive --agree-tos $EMAIL_ARG --re
     echo "=========================================="
     echo ""
     echo "🌐 Your API is now available at: https://$DOMAIN_NAME"
+    echo ""
+    
+    # Certbot automatically updates the nginx config, but let's verify
+    if nginx -t; then
+        echo "✅ Nginx configuration verified after SSL setup"
+        systemctl reload nginx || systemctl restart nginx
+    else
+        echo "⚠️  Warning: Nginx configuration test failed after SSL setup"
+        echo "Please check: sudo nginx -t"
+    fi
     echo ""
     
     # Test SSL
