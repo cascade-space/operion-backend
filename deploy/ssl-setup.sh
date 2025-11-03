@@ -66,6 +66,7 @@ fi
 echo ""
 echo "Enter your API domain name (e.g., api.cascade-erp.in)"
 echo "This should be a subdomain that points to your EC2 instance IP"
+echo "Note: Enter just the domain name, without http:// or https://"
 read -p "Domain name: " DOMAIN_NAME
 
 if [ -z "$DOMAIN_NAME" ]; then
@@ -73,8 +74,11 @@ if [ -z "$DOMAIN_NAME" ]; then
     exit 1
 fi
 
+# Strip http:// or https:// if user entered it
+DOMAIN_NAME=$(echo "$DOMAIN_NAME" | sed 's|^https\?://||' | sed 's|/$||')
+
 # Validate domain format
-if [[ ! "$DOMAIN_NAME" =~ ^[a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9]?\.[a-zA-Z]{2,}$ ]]; then
+if [[ ! "$DOMAIN_NAME" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]{0,61}[a-zA-Z0-9]?\.[a-zA-Z]{2,}$ ]]; then
     echo "⚠️  Warning: Domain name format may be invalid: $DOMAIN_NAME"
     read -p "Continue anyway? (y/N): " CONTINUE
     if [ "$CONTINUE" != "y" ] && [ "$CONTINUE" != "Y" ]; then
@@ -127,7 +131,8 @@ if [ -f "$NGINX_CONFIG" ]; then
     cp "$NGINX_CONFIG" "${NGINX_CONFIG}.backup.$(date +%Y%m%d_%H%M%S)"
     
     # Update server_name in HTTP server block (replace your-domain.com)
-    sed -i "s/server_name.*your-domain.com.*/server_name $DOMAIN_NAME;/g" "$NGINX_CONFIG"
+    # Use pipe as delimiter in sed to avoid conflicts with slashes in domain name
+    sed -i "s|server_name.*your-domain.com.*|server_name $DOMAIN_NAME localhost 127.0.0.1;|g" "$NGINX_CONFIG"
     
     # Test Nginx configuration (before SSL, should only have HTTP block)
     if nginx -t; then
