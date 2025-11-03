@@ -27,7 +27,7 @@ async function createSuperAdmin() {
       
       // Update existing superadmin
       existingSuperAdmin.email = email.toLowerCase();
-      existingSuperAdmin.username = email.toLowerCase();
+      existingSuperAdmin.username = 'superadmin'; // Use short username
       existingSuperAdmin.password = await bcrypt.hash(password, 12);
       existingSuperAdmin.profile = {
         firstName: 'Super',
@@ -40,6 +40,7 @@ async function createSuperAdmin() {
       await existingSuperAdmin.save();
       console.log('✅ Superadmin updated successfully!');
       console.log(`   Email: ${email}`);
+      console.log(`   Username: superadmin`);
       console.log(`   Password: ${password}`);
     } else {
       // Check if email already exists with different role
@@ -47,7 +48,7 @@ async function createSuperAdmin() {
       if (existingEmail) {
         console.log('⚠️  Email already exists with different role. Updating to superadmin...');
         existingEmail.email = email.toLowerCase();
-        existingEmail.username = email.toLowerCase();
+        existingEmail.username = 'superadmin'; // Use short username
         existingEmail.password = await bcrypt.hash(password, 12);
         existingEmail.role = 'super_admin';
         existingEmail.profile = {
@@ -63,13 +64,14 @@ async function createSuperAdmin() {
         await existingEmail.save();
         console.log('✅ User updated to superadmin successfully!');
         console.log(`   Email: ${email}`);
+        console.log(`   Username: superadmin`);
         console.log(`   Password: ${password}`);
       } else {
         // Create new superadmin
         console.log('👑 Creating new superadmin...');
         const superAdmin = new User({
           email: email.toLowerCase(),
-          username: email.toLowerCase(),
+          username: 'superadmin', // Use short username instead of full email
           password: await bcrypt.hash(password, 12),
           role: 'super_admin',
           profile: {
@@ -86,6 +88,7 @@ async function createSuperAdmin() {
         await superAdmin.save();
         console.log('✅ Superadmin created successfully!');
         console.log(`   Email: ${email}`);
+        console.log(`   Username: superadmin`);
         console.log(`   Password: ${password}`);
       }
     }
