@@ -1031,7 +1031,18 @@ export const completeWork = async (req: AuthRequest, res: Response): Promise<voi
     }
 
     // Check if user owns this work entry
-    if (!req.user || workEntry.employeeId?.toString() !== req.user.id) {
+    // Compare ObjectIds properly - workEntry.employeeId is ObjectId, req.user._id is ObjectId
+    const workEntryEmployeeIdStr = workEntry.employeeId?.toString();
+    const userEmployeeIdStr = req.user?._id?.toString();
+    
+    if (!req.user || !workEntryEmployeeIdStr || !userEmployeeIdStr || workEntryEmployeeIdStr !== userEmployeeIdStr) {
+      logger.error('Access denied - employee ID mismatch in completeWork', {
+        workEntryEmployeeId: workEntryEmployeeIdStr,
+        userEmployeeId: userEmployeeIdStr,
+        userId: req.user?.id,
+        workEntryId: workEntry._id.toString(),
+        hasUser: !!req.user
+      });
       const response: ApiResponse = {
         success: false,
         error: 'Access denied',
@@ -1176,7 +1187,17 @@ export const deleteWorkEntry = async (req: AuthRequest, res: Response): Promise<
     }
 
     // Check if user owns this work entry
-    if (!req.user || workEntry.employeeId?.toString() !== req.user.id) {
+    // Compare ObjectIds properly - workEntry.employeeId is ObjectId, req.user._id is ObjectId
+    const workEntryEmployeeIdStr = workEntry.employeeId?.toString();
+    const userEmployeeIdStr = req.user?._id?.toString();
+    
+    if (!req.user || !workEntryEmployeeIdStr || !userEmployeeIdStr || workEntryEmployeeIdStr !== userEmployeeIdStr) {
+      logger.error('Access denied - employee ID mismatch in deleteWorkEntry', {
+        workEntryEmployeeId: workEntryEmployeeIdStr,
+        userEmployeeId: userEmployeeIdStr,
+        userId: req.user?.id,
+        workEntryId: workEntry._id.toString()
+      });
       const response: ApiResponse = {
         success: false,
         error: 'Access denied',
@@ -1472,7 +1493,7 @@ export const validateWorkEntry = async (req: AuthRequest, res: Response): Promis
     workEntry.validationStatus = status;
     workEntry.validationNotes = validationNotes;
     if (req.user) {
-      workEntry.validatedBy = req.user.id;
+      workEntry.validatedBy = req.user._id;
     }
     workEntry.validatedAt = new Date();
 
