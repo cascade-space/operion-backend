@@ -18,7 +18,7 @@ import { initSentry, captureException } from '@/utils/sentry';
 initSentry();
 
 import mongoose from 'mongoose';
-import { connectDB } from '@/config/database';
+import { connectDB, disconnectDB } from '@/config/database';
 import { ApiResponse } from '@/types';
 import { wsServer } from '@/services/websocketServer';
 import redisService from '@/services/redisService';
@@ -692,9 +692,9 @@ const gracefulShutdown = async (signal: string) => {
       logger.error('Error disconnecting Redis', { error: error instanceof Error ? error.message : String(error) });
     }
     
-    // Close MongoDB connection
+    // Close MongoDB connection (this also clears the pool monitor interval)
     try {
-      await mongoose.connection.close();
+      await disconnectDB();
       logger.info('MongoDB disconnected');
     } catch (error) {
       logger.error('Error disconnecting MongoDB', { error: error instanceof Error ? error.message : String(error) });

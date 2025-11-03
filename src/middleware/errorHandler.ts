@@ -5,6 +5,7 @@ import { captureException } from '@/utils/sentry';
 
 /**
  * Centralized error handling middleware
+ * Prevents duplicate logging if error was already logged in controller
  */
 export const errorHandler = (
   error: any,
@@ -12,16 +13,33 @@ export const errorHandler = (
   res: Response,
   next: NextFunction
 ): void => {
-  logger.error('Error:', {
-    message: error.message,
-    stack: error.stack,
-    path: req.path,
-    method: req.method,
-    timestamp: new Date().toISOString()
-  });
+  // Check if error was already logged in controller (prevents duplicate logging)
+  const alreadyLogged = error._logged === true;
+  
+  if (!alreadyLogged) {
+    // Only log if not already logged by controller
+    logger.error('Error:', {
+      message: error.message,
+      stack: error.stack,
+      path: req.path,
+      method: req.method,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Mark as logged to prevent further duplicates
+    error._logged = true;
+  } else {
+    // Error was already logged in controller, only log minimal info
+    logger.debug('Error already logged in controller, skipping duplicate log', {
+      path: req.path,
+      method: req.method,
+      statusCode: error.statusCode
+    });
+  }
 
-  // Send to Sentry for tracking
-  if (error.statusCode >= 500 || !error.statusCode) {
+  // Send to Sentry for tracking (only if not already sent and is server error)
+  const alreadySentToSentry = error._sentToSentry === true;
+  if (!alreadySentToSentry && (error.statusCode >= 500 || !error.statusCode)) {
     captureException(error instanceof Error ? error : new Error(error.message), {
       request: {
         url: req.url,
@@ -35,6 +53,7 @@ export const errorHandler = (
         role: (req as any).user.role,
       } : undefined,
     });
+    error._sentToSentry = true;
   }
 
   // Determine status code

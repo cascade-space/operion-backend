@@ -6,7 +6,7 @@ import User from '@/models/User';
 import WorkEntry from '@/models/WorkEntry';
 import { ApiResponse, ILocation } from '@/types';
 import { AuthRequest } from '@/middleware/auth';
-import logger from '@/utils/logger';
+import logger, { logError } from '@/utils/logger';
 
 // Get all attendance records
 export const getAllAttendance = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -73,7 +73,7 @@ export const getAllAttendance = async (req: AuthRequest, res: Response): Promise
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Get attendance error', { error: error.message, stack: error.stack });
+    logError('Get attendance error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to retrieve attendance records',
@@ -121,7 +121,7 @@ export const getAttendanceById = async (req: AuthRequest, res: Response): Promis
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Get attendance error', { error: error.message, stack: error.stack });
+    logError('Get attendance error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to retrieve attendance record',
@@ -692,7 +692,7 @@ export const checkIn = async (req: AuthRequest, res: Response): Promise<void> =>
 
     res.status(201).json(response);
   } catch (error: any) {
-    logger.error('Check-in error', { error: error.message, stack: error.stack });
+    logError('Check-in error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to check in',
@@ -988,9 +988,7 @@ export const checkOut = async (req: AuthRequest, res: Response): Promise<void> =
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Check-out error', { 
-      error: error.message, 
-      stack: error.stack,
+    logError('Check-out error', error, {
       attendanceId: req.params?.id,
       employeeId: req.user?.id
     });

@@ -192,3 +192,20 @@ export const logRequest = (req: any, res: any, duration?: number): void => {
   logger.info(`${req.method} ${req.path}`, logData);
 };
 
+/**
+ * Log error and mark it as logged to prevent duplicate logging in error handler middleware
+ * Use this in controllers instead of logger.error() directly
+ */
+export const logError = (message: string, error: any, metadata?: Record<string, any>): void => {
+  logger.error(message, {
+    error: error instanceof Error ? error.message : String(error),
+    stack: error instanceof Error ? error.stack : undefined,
+    ...metadata
+  });
+  
+  // Mark error as logged to prevent duplicate logging in error handler middleware
+  if (error && typeof error === 'object') {
+    (error as any)._logged = true;
+  }
+};
+
