@@ -690,8 +690,13 @@ export const directWorkEntry = async (req: AuthRequest, res: Response): Promise<
       return;
     }
 
-    const employeeId = req.user.id;
-    logger.debug('Step 3: Starting database queries');
+    const employeeId = req.user._id || req.user.id;
+    logger.debug('Step 3: Starting database queries', {
+      employeeId: employeeId?.toString(),
+      userId: req.user.id,
+      _id: req.user._id?.toString(),
+      userRole: req.user.role
+    });
 
     // Verify process exists
     const process = await Process.findById(processId);
@@ -730,9 +735,18 @@ export const directWorkEntry = async (req: AuthRequest, res: Response): Promise<
       return;
     }
 
-    // Get employee info
-    const employee = await User.findById(employeeId);
+    // Get employee info - use _id (ObjectId) to ensure proper lookup
+    // Since req.user is already loaded from authentication, we can use it directly
+    // But we fetch again to ensure we have the latest data with all relationships
+    const employee = await User.findById(req.user._id).populate('factoryId');
     if (!employee) {
+      logger.error('Employee lookup failed', {
+        employeeId: employeeId?.toString(),
+        userId: req.user.id,
+        _id: req.user._id?.toString(),
+        userExists: !!req.user,
+        userRole: req.user?.role
+      });
       const response: ApiResponse = {
         success: false,
         error: 'Employee not found',
@@ -741,6 +755,15 @@ export const directWorkEntry = async (req: AuthRequest, res: Response): Promise<
       res.status(404).json(response);
       return;
     }
+    
+    logger.debug('Employee found successfully', {
+      employeeId: employee._id.toString(),
+      factoryId: employee.factoryId?.toString(),
+      role: employee.role
+    });
+
+    // Use employee._id for consistency after verification
+    const verifiedEmployeeId = employee._id;
 
     // Check if process belongs to the employee's factory
     if (process.factoryId?.toString() !== employee.factoryId?.toString()) {
@@ -771,7 +794,7 @@ export const directWorkEntry = async (req: AuthRequest, res: Response): Promise<
     tomorrow.setDate(tomorrow.getDate() + 1);
 
     let currentAttendance = await Attendance.findOne({
-      employeeId,
+      employeeId: verifiedEmployeeId,
       date: {
         $gte: today,
         $lt: tomorrow
@@ -781,7 +804,7 @@ export const directWorkEntry = async (req: AuthRequest, res: Response): Promise<
     if (!currentAttendance) {
       // Auto-create attendance record with required fields
       currentAttendance = new Attendance({
-        employeeId,
+        employeeId: verifiedEmployeeId,
         factoryId: employee.factoryId,
         processId: processId,
         shiftType: shiftType || 'General',
@@ -813,7 +836,7 @@ export const directWorkEntry = async (req: AuthRequest, res: Response): Promise<
 
     // Create work entry directly
     const workEntry = new WorkEntry({
-      employeeId,
+      employeeId: verifiedEmployeeId,
       factoryId: employee.factoryId,
       attendanceId: currentAttendance._id,
       processId,
@@ -827,7 +850,7 @@ export const directWorkEntry = async (req: AuthRequest, res: Response): Promise<
       startTime: new Date(),
       endTime: new Date(),
       validationStatus: 'approved', // Auto-approve first stage entries
-      validatedBy: employeeId,
+      validatedBy: verifiedEmployeeId,
       validatedAt: new Date(),
       location: location || { latitude: 0, longitude: 0 }
     });
