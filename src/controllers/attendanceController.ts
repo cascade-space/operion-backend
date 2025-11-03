@@ -4,7 +4,7 @@ import mongoose from 'mongoose';
 import Attendance from '@/models/Attendance';
 import User from '@/models/User';
 import WorkEntry from '@/models/WorkEntry';
-import { ApiResponse } from '@/types';
+import { ApiResponse, ILocation } from '@/types';
 import { AuthRequest } from '@/middleware/auth';
 import logger from '@/utils/logger';
 
@@ -788,11 +788,17 @@ export const checkOut = async (req: AuthRequest, res: Response): Promise<void> =
     }
 
     // Validate ownership - ensure this attendance belongs to the requesting employee
-    if (attendance.employeeId.toString() !== employeeId.toString()) {
+    // Handle both ObjectId and string types safely
+    const attendanceEmployeeId = attendance.employeeId?.toString() || String(attendance.employeeId);
+    const requestingEmployeeIdStr = employeeId?.toString() || String(employeeId);
+    
+    if (attendanceEmployeeId !== requestingEmployeeIdStr) {
       logger.warn('Check-out error: Attendance access denied', { 
         attendanceId: attendance._id, 
-        attendanceEmployeeId: attendance.employeeId,
-        requestingEmployeeId: employeeId
+        attendanceEmployeeId: attendanceEmployeeId,
+        requestingEmployeeId: requestingEmployeeIdStr,
+        attendanceEmployeeIdType: typeof attendance.employeeId,
+        employeeIdType: typeof employeeId
       });
       const response: ApiResponse = {
         success: false,
@@ -832,18 +838,78 @@ export const checkOut = async (req: AuthRequest, res: Response): Promise<void> =
       return;
     }
 
+    // Validate and prepare location data
+    let checkOutLocation: ILocation;
+    
+    if (location && typeof location === 'object' && 
+        typeof location.latitude === 'number' && 
+        typeof location.longitude === 'number') {
+      // Use provided location if valid
+      checkOutLocation = {
+        latitude: location.latitude,
+        longitude: location.longitude
+      };
+    } else if (attendance.checkIn?.location && 
+               typeof attendance.checkIn.location === 'object' &&
+               typeof attendance.checkIn.location.latitude === 'number' &&
+               typeof attendance.checkIn.location.longitude === 'number') {
+      // Fallback to check-in location
+      checkOutLocation = {
+        latitude: attendance.checkIn.location.latitude,
+        longitude: attendance.checkIn.location.longitude
+      };
+      logger.info('Check-out: Using check-in location as fallback', {
+        attendanceId: attendance._id
+      });
+    } else {
+      // Last resort: use default location (0, 0) if nothing valid exists
+      logger.warn('Check-out: No valid location found, using default', {
+        attendanceId: attendance._id,
+        providedLocation: location,
+        checkInLocation: attendance.checkIn?.location
+      });
+      checkOutLocation = {
+        latitude: 0,
+        longitude: 0
+      };
+    }
+
     const checkOutTime = new Date();
 
     // Update attendance with check-out
     attendance.checkOut = {
       time: checkOutTime,
-      location: location || attendance.checkIn.location // Use provided location or fallback to check-in location
+      location: checkOutLocation
     };
     attendance.status = 'present'; // Keep as present since work is completed
 
-    // Calculate work hours using the model method
-    const workHours = (attendance as any).calculateWorkHours ? (attendance as any).calculateWorkHours() : 
-      (attendance.checkOut.time.getTime() - attendance.checkIn.time.getTime()) / (1000 * 60 * 60);
+    // Calculate work hours using the model method with error handling
+    let workHours = 0;
+    try {
+      if (typeof (attendance as any).calculateWorkHours === 'function') {
+        workHours = (attendance as any).calculateWorkHours();
+      } else {
+        // Fallback calculation if method doesn't exist
+        workHours = (checkOutTime.getTime() - attendance.checkIn.time.getTime()) / (1000 * 60 * 60);
+      }
+      
+      // Validate work hours is a valid number
+      if (isNaN(workHours) || !isFinite(workHours)) {
+        logger.warn('Check-out: Invalid work hours calculated, using fallback', {
+          attendanceId: attendance._id,
+          calculatedHours: workHours
+        });
+        workHours = (checkOutTime.getTime() - attendance.checkIn.time.getTime()) / (1000 * 60 * 60);
+      }
+    } catch (calcError: any) {
+      logger.error('Check-out: Error calculating work hours', {
+        attendanceId: attendance._id,
+        error: calcError.message,
+        stack: calcError.stack
+      });
+      // Use fallback calculation
+      workHours = (checkOutTime.getTime() - attendance.checkIn.time.getTime()) / (1000 * 60 * 60);
+    }
     
     logger.info('Check-out successful', {
       attendanceId: attendance._id,
@@ -853,21 +919,71 @@ export const checkOut = async (req: AuthRequest, res: Response): Promise<void> =
       workHours: workHours.toFixed(2)
     });
 
-    await attendance.save();
+    // Save attendance record with error handling
+    try {
+      await attendance.save();
+    } catch (saveError: any) {
+      logger.error('Check-out error: Failed to save attendance', {
+        error: saveError.message,
+        stack: saveError.stack,
+        attendanceId: attendance._id,
+        employeeId,
+        code: saveError.code,
+        keyPattern: saveError.keyPattern,
+        keyValue: saveError.keyValue
+      });
+      
+      // Check for duplicate key error
+      if (saveError.code === 11000) {
+        const response: ApiResponse = {
+          success: false,
+          error: 'Attendance record already exists for this employee and date',
+          status: 409
+        };
+        res.status(409).json(response);
+        return;
+      }
+      
+      // Re-throw to be caught by outer catch
+      throw saveError;
+    }
 
-    const populatedAttendance = await Attendance.findById(attendance._id)
-      .populate('employeeId', 'profile.firstName profile.lastName email')
-      .populate('processId', 'name')
-      .populate('factoryId', 'name');
+    // Populate attendance data with error handling
+    let attendanceData: any = {};
+    
+    try {
+      const populatedAttendance = await Attendance.findById(attendance._id)
+        .populate('employeeId', 'profile.firstName profile.lastName email')
+        .populate('processId', 'name')
+        .populate('factoryId', 'name');
+      
+      if (populatedAttendance) {
+        attendanceData = populatedAttendance.toObject();
+      } else {
+        // Fallback: use the saved attendance without population
+        logger.warn('Check-out: Failed to populate attendance, using raw data', {
+          attendanceId: attendance._id
+        });
+        attendanceData = attendance.toObject();
+      }
+    } catch (populateError: any) {
+      logger.error('Check-out error: Failed to populate attendance', {
+        error: populateError.message,
+        stack: populateError.stack,
+        attendanceId: attendance._id
+      });
+      // Use the saved attendance without population as fallback
+      attendanceData = attendance.toObject();
+    }
+
+    // Ensure workHours is included in response
+    attendanceData.workHours = workHours.toFixed(2);
 
     const response: ApiResponse = {
       success: true,
       message: 'Check-out successful',
       status: 200,
-      data: {
-        ...populatedAttendance?.toObject(),
-        workHours: workHours.toFixed(2)
-      }
+      data: attendanceData
     };
 
     res.status(200).json(response);
