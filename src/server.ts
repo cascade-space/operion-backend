@@ -246,6 +246,11 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
+// Explicit OPTIONS handler for preflight requests - ensure CORS headers are always sent
+app.options('*', cors(corsOptions), (req, res) => {
+  res.status(200).end();
+});
+
 // Compression middleware
 app.use(compression());
 

@@ -68,6 +68,11 @@ export const errorHandler = (
     status: statusCode
   };
 
+  // Note: CORS headers should already be set by the CORS middleware
+  // This error handler runs after CORS middleware, so headers should be present
+  // If headers aren't present, it means the request never reached CORS middleware
+  // (e.g., server crash before middleware runs)
+
   res.status(statusCode).json(response);
 };
 
