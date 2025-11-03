@@ -371,7 +371,13 @@ export const startWork = async (req: AuthRequest, res: Response): Promise<void> 
       return;
     }
 
-    const employeeId = req.user.id;
+    // Use req.user._id (ObjectId) instead of req.user.id (string) for reliable lookup
+    logger.debug('Step 1: Starting work entry request', {
+      userId: req.user.id,
+      _id: req.user._id?.toString(),
+      processId,
+      productId
+    });
 
     // Verify process exists and employee is assigned to it
     const process = await Process.findById(processId);
@@ -385,8 +391,14 @@ export const startWork = async (req: AuthRequest, res: Response): Promise<void> 
       return;
     }
 
-    const employee = await User.findById(employeeId);
+    // Get employee info - use _id (ObjectId) to ensure proper lookup
+    const employee = await User.findById(req.user._id);
     if (!employee) {
+      logger.error('Employee lookup failed in startWork', {
+        userId: req.user.id,
+        _id: req.user._id?.toString(),
+        userRole: req.user?.role
+      });
       const response: ApiResponse = {
         success: false,
         error: 'Employee not found',
@@ -396,24 +408,42 @@ export const startWork = async (req: AuthRequest, res: Response): Promise<void> 
       return;
     }
     
+    // Extract factory ID for validation
+    const employeeFactoryId = employee.factoryId?.toString();
+    
+    // Validate employee has a factory ID
+    if (!employeeFactoryId) {
+      logger.error('Employee missing factoryId in startWork', {
+        employeeId: employee._id.toString(),
+        role: employee.role
+      });
+      const response: ApiResponse = {
+        success: false,
+        error: 'Employee factory assignment not found',
+        status: 400
+      };
+      res.status(400).json(response);
+      return;
+    }
+    
     logger.debug('Employee and process validation', {
-      employeeId,
-      employeeRole: employee?.role,
-      employeeFactoryId: employee?.factoryId,
-      processFactoryId: process.factoryId,
-      userRole: req.user?.role,
+      employeeId: employee._id.toString(),
+      employeeRole: employee.role,
+      employeeFactoryId,
+      processFactoryId: process.factoryId?.toString(),
     });
     
     // Employees can work on any process in their factory
     // No process assignment check needed
 
     // Check if process belongs to the employee's factory
-    if (process.factoryId?.toString() !== employee.factoryId?.toString()) {
-      logger.debug('Factory mismatch', {
-        processFactoryId: process.factoryId,
-        employeeFactoryId: employee.factoryId,
-        processFactoryIdString: process.factoryId?.toString(),
-        employeeFactoryIdString: employee.factoryId?.toString()
+    const processFactoryIdStr = process.factoryId?.toString();
+    if (!processFactoryIdStr || processFactoryIdStr !== employeeFactoryId) {
+      logger.error('Factory ID mismatch - Process in startWork', {
+        processFactoryId: processFactoryIdStr,
+        employeeFactoryId,
+        processId: process._id.toString(),
+        processName: process.name
       });
       const response: ApiResponse = {
         success: false,
@@ -437,7 +467,14 @@ export const startWork = async (req: AuthRequest, res: Response): Promise<void> 
     }
 
     // Check if product belongs to the employee's factory
-    if (product.factoryId?.toString() !== employee.factoryId?.toString()) {
+    const productFactoryIdStr = product.factoryId?.toString();
+    if (!productFactoryIdStr || productFactoryIdStr !== employeeFactoryId) {
+      logger.error('Factory ID mismatch - Product in startWork', {
+        productFactoryId: productFactoryIdStr,
+        employeeFactoryId,
+        productId: product._id.toString(),
+        productName: product.name
+      });
       const response: ApiResponse = {
         success: false,
         error: 'Product does not belong to your factory',
@@ -486,8 +523,11 @@ export const startWork = async (req: AuthRequest, res: Response): Promise<void> 
       return;
     }
 
+    // Use employee._id for consistency after verification
+    const verifiedEmployeeId = employee._id;
+
     logger.debug('Starting work for employee', {
-      employeeId: employee._id,
+      employeeId: verifiedEmployeeId.toString(),
       processId: processId,
       factoryId: employee.factoryId,
       location: currentLocation
@@ -500,7 +540,7 @@ export const startWork = async (req: AuthRequest, res: Response): Promise<void> 
     tomorrow.setDate(tomorrow.getDate() + 1);
 
     let currentAttendance = await Attendance.findOne({
-      employeeId,
+      employeeId: verifiedEmployeeId,
       date: {
         $gte: today,
         $lt: tomorrow
@@ -510,7 +550,7 @@ export const startWork = async (req: AuthRequest, res: Response): Promise<void> 
     if (!currentAttendance) {
       // Auto-create attendance record for the employee (simplified)
       currentAttendance = new Attendance({
-        employeeId,
+        employeeId: verifiedEmployeeId,
         factoryId: employee.factoryId,
         processId: processId,
         checkIn: {
@@ -524,7 +564,7 @@ export const startWork = async (req: AuthRequest, res: Response): Promise<void> 
       });
       
       await currentAttendance.save();
-      logger.info('Attendance record created for employee', { employeeId });
+      logger.info('Attendance record created for employee', { employeeId: verifiedEmployeeId.toString() });
     }
 
     const startTime = new Date();
@@ -539,7 +579,7 @@ export const startWork = async (req: AuthRequest, res: Response): Promise<void> 
     // Convert string IDs to ObjectIds if needed
     
     const workEntry = new WorkEntry({
-      employeeId,
+      employeeId: verifiedEmployeeId,
       processId,
       productId,
       machineId: req.body.machineId ? (typeof req.body.machineId === 'string' ? new mongoose.Types.ObjectId(req.body.machineId) : req.body.machineId) : null,
