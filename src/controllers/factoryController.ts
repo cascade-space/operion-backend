@@ -6,7 +6,7 @@ import User from '@/models/User';
 import { ApiResponse } from '@/types';
 import { AuthRequest } from '@/middleware/auth';
 import bcrypt from 'bcryptjs';
-import logger from '@/utils/logger';
+import logger, { logError } from '@/utils/logger';
 
 // Register a new factory (public endpoint)
 export const registerFactory = async (req: Request, res: Response): Promise<void> => {
@@ -200,10 +200,7 @@ export const registerFactory = async (req: Request, res: Response): Promise<void
 
     res.status(201).json(response);
   } catch (error: any) {
-    logger.error('Factory registration error', {
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined
-    });
+    logError('Factory registration error', error);
     
     // Handle specific error types
     if (error.code === 11000) {
@@ -264,7 +261,7 @@ export const getFactoryRequests = async (req: AuthRequest, res: Response): Promi
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Get factory requests error', { error: error instanceof Error ? error.message : String(error) });
+    logError('Get factory requests error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to retrieve factory requests',
@@ -315,7 +312,7 @@ export const approveFactoryRequest = async (req: AuthRequest, res: Response): Pr
 
     // Validate admin credentials
     if (!factoryRequest.adminCredentials?.password) {
-      logger.error('No admin credentials found in factory request');
+      logError('No admin credentials found in factory request', new Error('Missing admin credentials'));
       const response: ApiResponse = {
         success: false,
         error: 'No admin credentials found in factory request',
@@ -327,7 +324,7 @@ export const approveFactoryRequest = async (req: AuthRequest, res: Response): Pr
 
     // Validate admin email
     if (!factoryRequest.adminEmail) {
-      logger.error('No admin email found in factory request');
+      logError('No admin email found in factory request', new Error('Missing admin email'));
       const response: ApiResponse = {
         success: false,
         error: 'No admin email found in factory request',
@@ -340,7 +337,7 @@ export const approveFactoryRequest = async (req: AuthRequest, res: Response): Pr
     // Check if admin email already exists in users
     const existingUser = await User.findOne({ email: factoryRequest.adminEmail });
     if (existingUser) {
-      logger.error('Admin email already exists in system', { email: factoryRequest.adminEmail });
+      logError('Admin email already exists in system', new Error('Duplicate admin email'), { email: factoryRequest.adminEmail });
       const response: ApiResponse = {
         success: false,
         error: 'Admin email already registered in the system',
@@ -382,7 +379,7 @@ export const approveFactoryRequest = async (req: AuthRequest, res: Response): Pr
     // Validate password format
     const hashedPassword = factoryRequest.adminCredentials.password;
     if (!hashedPassword || !hashedPassword.startsWith('$2')) {
-      logger.error('Invalid password format in factory request');
+      logError('Invalid password format in factory request', new Error('Invalid password format'));
       const response: ApiResponse = {
         success: false,
         error: 'Invalid admin credentials format in factory request',
@@ -466,9 +463,7 @@ export const approveFactoryRequest = async (req: AuthRequest, res: Response): Pr
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Factory approval error', {
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
+    logError('Factory approval error', error, {
       name: error.name,
       code: error.code,
       keyPattern: error.keyPattern,
@@ -540,7 +535,7 @@ export const rejectFactoryRequest = async (req: AuthRequest, res: Response): Pro
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Reject factory error', { error: error instanceof Error ? error.message : String(error) });
+    logError('Reject factory error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to reject factory',
@@ -565,7 +560,7 @@ export const createFactory = async (req: AuthRequest, res: Response): Promise<vo
     
     res.status(201).json(response);
   } catch (error: any) {
-    logger.error('Create factory error', { error: error instanceof Error ? error.message : String(error) });
+    logError('Create factory error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to create factory',
@@ -625,7 +620,7 @@ export const getAllFactories = async (req: Request, res: Response): Promise<void
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Get factories error', { error: error instanceof Error ? error.message : String(error) });
+    logError('Get factories error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to retrieve factories',
@@ -685,10 +680,7 @@ export const getShifts = async (req: AuthRequest, res: Response): Promise<void> 
     
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Get shifts error', {
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined
-    });
+    logError('Get shifts error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to retrieve factory',
@@ -729,7 +721,7 @@ export const getFactoryById = async (req: Request, res: Response): Promise<void>
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Get factory error', { error: error instanceof Error ? error.message : String(error) });
+    logError('Get factory error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to retrieve factory',
@@ -767,7 +759,7 @@ export const updateFactory = async (req: Request, res: Response): Promise<void> 
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Update factory error', { error: error instanceof Error ? error.message : String(error) });
+    logError('Update factory error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to update factory',
@@ -800,7 +792,7 @@ export const deleteFactory = async (req: Request, res: Response): Promise<void> 
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Delete factory error', { error: error instanceof Error ? error.message : String(error) });
+    logError('Delete factory error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to delete factory',
@@ -838,7 +830,7 @@ export const approveFactory = async (req: Request, res: Response): Promise<void>
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Approve factory error', { error: error instanceof Error ? error.message : String(error) });
+    logError('Approve factory error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to approve factory',
@@ -876,7 +868,7 @@ export const suspendFactory = async (req: Request, res: Response): Promise<void>
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Suspend factory error', { error: error instanceof Error ? error.message : String(error) });
+    logError('Suspend factory error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to suspend factory',
@@ -976,7 +968,7 @@ export const addShift = async (req: AuthRequest, res: Response): Promise<void> =
     
     res.status(201).json(response);
   } catch (error: any) {
-    logger.error('Add shift error', { error: error instanceof Error ? error.message : String(error) });
+    logError('Add shift error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to add shift',
@@ -1070,7 +1062,7 @@ export const updateShift = async (req: AuthRequest, res: Response): Promise<void
     
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Update shift error', { error: error instanceof Error ? error.message : String(error) });
+    logError('Update shift error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to update shift',
@@ -1130,7 +1122,7 @@ export const deleteShift = async (req: AuthRequest, res: Response): Promise<void
     
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Delete shift error', { error: error instanceof Error ? error.message : String(error) });
+    logError('Delete shift error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to delete shift',

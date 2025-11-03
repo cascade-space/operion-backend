@@ -13,7 +13,7 @@ import { AuthRequest } from '@/middleware/auth';
 import quantityService from '@/services/quantityService';
 import { wsServer } from '@/services/websocketServer';
 import dashboardService from '@/services/dashboardService';
-import logger from '@/utils/logger';
+import logger, { logError } from '@/utils/logger';
 
 // Helper function to calculate distance between two points
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -52,7 +52,7 @@ export const debugStart = async (req: AuthRequest, res: Response): Promise<void>
       timestamp: new Date().toISOString()
     });
   } catch (error: any) {
-    logger.error('Debug endpoint error', { error: error instanceof Error ? error.message : String(error) });
+    logError('Debug endpoint error', error);
     res.status(500).json({ 
       success: false, 
       error: error.message,
@@ -122,7 +122,7 @@ export const getActiveWorkEntry = async (req: AuthRequest, res: Response): Promi
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Get active work entry error', { error: error instanceof Error ? error.message : String(error) });
+    logError('Get active work entry error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to retrieve active work entry',
@@ -200,7 +200,7 @@ export const getAllWorkEntries = async (req: AuthRequest, res: Response): Promis
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Get work entries error', { error: error instanceof Error ? error.message : String(error) });
+    logError('Get work entries error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to retrieve work entries',
@@ -249,7 +249,7 @@ export const getWorkEntryById = async (req: AuthRequest, res: Response): Promise
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Get work entry error', { error: error instanceof Error ? error.message : String(error) });
+    logError('Get work entry error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to retrieve work entry',
@@ -394,7 +394,7 @@ export const startWork = async (req: AuthRequest, res: Response): Promise<void> 
     // Get employee info - use _id (ObjectId) to ensure proper lookup
     const employee = await User.findById(req.user._id);
     if (!employee) {
-      logger.error('Employee lookup failed in startWork', {
+      logError('Employee lookup failed in startWork', new Error('Employee lookup failed'), {
         userId: req.user.id,
         _id: req.user._id?.toString(),
         userRole: req.user?.role
@@ -413,7 +413,7 @@ export const startWork = async (req: AuthRequest, res: Response): Promise<void> 
     
     // Validate employee has a factory ID
     if (!employeeFactoryId) {
-      logger.error('Employee missing factoryId in startWork', {
+      logError('Employee missing factoryId in startWork', new Error('Employee missing factoryId'), {
         employeeId: employee._id.toString(),
         role: employee.role
       });
@@ -439,7 +439,7 @@ export const startWork = async (req: AuthRequest, res: Response): Promise<void> 
     // Check if process belongs to the employee's factory
     const processFactoryIdStr = process.factoryId?.toString();
     if (!processFactoryIdStr || processFactoryIdStr !== employeeFactoryId) {
-      logger.error('Factory ID mismatch - Process in startWork', {
+      logError('Factory ID mismatch - Process in startWork', new Error('Factory ID mismatch'), {
         processFactoryId: processFactoryIdStr,
         employeeFactoryId,
         processId: process._id.toString(),
@@ -469,7 +469,7 @@ export const startWork = async (req: AuthRequest, res: Response): Promise<void> 
     // Check if product belongs to the employee's factory
     const productFactoryIdStr = product.factoryId?.toString();
     if (!productFactoryIdStr || productFactoryIdStr !== employeeFactoryId) {
-      logger.error('Factory ID mismatch - Product in startWork', {
+      logError('Factory ID mismatch - Product in startWork', new Error('Factory ID mismatch'), {
         productFactoryId: productFactoryIdStr,
         employeeFactoryId,
         productId: product._id.toString(),
@@ -622,14 +622,12 @@ export const startWork = async (req: AuthRequest, res: Response): Promise<void> 
 
     res.status(201).json(response);
   } catch (error: any) {
-    logger.error('Create work entry error', {
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined
+    logError('Create work entry error', error, {
     });
     
     // Check if it's a validation error
     if (error.name === 'ValidationError') {
-      logger.error('Validation errors', { errors: error.errors });
+      logError('Validation errors', error, { validationErrors: error.errors });
       const response: ApiResponse = {
         success: false,
         error: 'Validation failed',
@@ -642,7 +640,7 @@ export const startWork = async (req: AuthRequest, res: Response): Promise<void> 
     
     // Check if it's a cast error
     if (error.name === 'CastError') {
-      logger.error('Cast error details', {
+      logError('Cast error details', error, {
         path: error.path,
         value: error.value,
         kind: error.kind
@@ -781,7 +779,7 @@ export const directWorkEntry = async (req: AuthRequest, res: Response): Promise<
     // Don't populate factoryId - we just need the ObjectId for comparison
     const employee = await User.findById(req.user._id);
     if (!employee) {
-      logger.error('Employee lookup failed', {
+      logError('Employee lookup failed', new Error('Employee lookup failed'), {
         employeeId: employeeId?.toString(),
         userId: req.user.id,
         _id: req.user._id?.toString(),
@@ -802,7 +800,7 @@ export const directWorkEntry = async (req: AuthRequest, res: Response): Promise<
     
     // Validate employee has a factory ID (required for employees)
     if (!employeeFactoryId) {
-      logger.error('Employee missing factoryId', {
+      logError('Employee missing factoryId', new Error('Employee missing factoryId'), {
         employeeId: employee._id.toString(),
         role: employee.role
       });
@@ -829,7 +827,7 @@ export const directWorkEntry = async (req: AuthRequest, res: Response): Promise<
     // Check if process belongs to the employee's factory
     const processFactoryIdStr = process.factoryId?.toString();
     if (!processFactoryIdStr || processFactoryIdStr !== employeeFactoryId) {
-      logger.error('Factory ID mismatch - Process', {
+      logError('Factory ID mismatch - Process', new Error('Factory ID mismatch'), {
         processFactoryId: processFactoryIdStr,
         employeeFactoryId: employeeFactoryId,
         processId: process._id.toString(),
@@ -847,7 +845,7 @@ export const directWorkEntry = async (req: AuthRequest, res: Response): Promise<
     // Check if product belongs to the employee's factory
     const productFactoryIdStr = product.factoryId?.toString();
     if (!productFactoryIdStr || productFactoryIdStr !== employeeFactoryId) {
-      logger.error('Factory ID mismatch - Product', {
+      logError('Factory ID mismatch - Product', new Error('Factory ID mismatch'), {
         productFactoryId: productFactoryIdStr,
         employeeFactoryId: employeeFactoryId,
         productId: product._id.toString(),
@@ -905,9 +903,7 @@ export const directWorkEntry = async (req: AuthRequest, res: Response): Promise<
           attendanceId: currentAttendance._id.toString()
         });
       } catch (attendanceError: any) {
-        logger.error('Failed to auto-create attendance record', {
-          error: attendanceError.message,
-          stack: attendanceError.stack,
+        logError('Failed to auto-create attendance record', attendanceError, {
           employeeId: verifiedEmployeeId.toString()
         });
         // If creation fails (e.g., duplicate), try to find it again
@@ -956,8 +952,7 @@ export const directWorkEntry = async (req: AuthRequest, res: Response): Promise<
         try {
           await currentAttendance.save();
         } catch (updateError: any) {
-          logger.error('Failed to update attendance record', {
-            error: updateError.message,
+          logError('Failed to update attendance record', updateError, {
             attendanceId: currentAttendance._id.toString()
           });
           // Continue anyway - attendance exists and can be used
@@ -1052,10 +1047,7 @@ export const directWorkEntry = async (req: AuthRequest, res: Response): Promise<
     res.status(201).json(response);
     
   } catch (error: any) {
-    logger.error('Direct work entry error', {
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined
-    });
+    logError('Direct work entry error', error);
     
     const response: ApiResponse = {
       success: false,
@@ -1098,7 +1090,7 @@ export const completeWork = async (req: AuthRequest, res: Response): Promise<voi
     const userEmployeeIdStr = req.user?._id?.toString();
     
     if (!req.user || !workEntryEmployeeIdStr || !userEmployeeIdStr || workEntryEmployeeIdStr !== userEmployeeIdStr) {
-      logger.error('Access denied - employee ID mismatch in completeWork', {
+      logError('Access denied - employee ID mismatch in completeWork', new Error('Employee ID mismatch'), {
         workEntryEmployeeId: workEntryEmployeeIdStr,
         userEmployeeId: userEmployeeIdStr,
         userId: req.user?.id,
@@ -1151,9 +1143,7 @@ export const completeWork = async (req: AuthRequest, res: Response): Promise<voi
         workEntry.productId?.toString()
       );
     } catch (error: any) {
-      logger.error('Quantity service error', {
-        error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
+      logError('Quantity service error', error, {
         workEntryId: workEntry._id,
         processId: workEntry.processId.toString(),
         productId: workEntry.productId?.toString(),
@@ -1224,7 +1214,7 @@ export const completeWork = async (req: AuthRequest, res: Response): Promise<voi
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Update work entry error', { error: error instanceof Error ? error.message : String(error) });
+    logError('Update work entry error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to update work entry',
@@ -1254,7 +1244,7 @@ export const deleteWorkEntry = async (req: AuthRequest, res: Response): Promise<
     const userEmployeeIdStr = req.user?._id?.toString();
     
     if (!req.user || !workEntryEmployeeIdStr || !userEmployeeIdStr || workEntryEmployeeIdStr !== userEmployeeIdStr) {
-      logger.error('Access denied - employee ID mismatch in deleteWorkEntry', {
+      logError('Access denied - employee ID mismatch in deleteWorkEntry', new Error('Employee ID mismatch'), {
         workEntryEmployeeId: workEntryEmployeeIdStr,
         userEmployeeId: userEmployeeIdStr,
         userId: req.user?.id,
@@ -1290,7 +1280,7 @@ export const deleteWorkEntry = async (req: AuthRequest, res: Response): Promise<
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Delete work entry error', { error: error instanceof Error ? error.message : String(error) });
+    logError('Delete work entry error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to delete work entry',
@@ -1315,10 +1305,7 @@ export const getWorkEntriesByEmployee = async (req: AuthRequest, res: Response):
     try {
       queryEmployeeId = new mongoose.Types.ObjectId(employeeId);
     } catch (error) {
-      logger.error('Invalid employeeId format in getWorkEntriesByEmployee', {
-        employeeId,
-        error: error instanceof Error ? error.message : String(error)
-      });
+      logError('Invalid employeeId format in getWorkEntriesByEmployee', error, { employeeId });
       const response: ApiResponse = {
         success: false,
         error: 'Invalid employee ID format',
@@ -1433,9 +1420,7 @@ export const getWorkEntriesByEmployee = async (req: AuthRequest, res: Response):
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Get employee work entries error', {
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
+    logError('Get employee work entries error', error, {
       employeeId: req.params.employeeId,
       query: req.query
     });
@@ -1515,7 +1500,7 @@ export const getWorkEntryHistory = async (req: AuthRequest, res: Response): Prom
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Get employee work history error', { error: error instanceof Error ? error.message : String(error) });
+    logError('Get employee work history error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to retrieve employee work history',
@@ -1554,7 +1539,7 @@ export const getPendingValidations = async (req: AuthRequest, res: Response): Pr
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Get pending work entries error', { error: error instanceof Error ? error.message : String(error) });
+    logError('Get pending work entries error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to retrieve pending work entries',
@@ -1647,7 +1632,7 @@ export const validateWorkEntry = async (req: AuthRequest, res: Response): Promis
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Validate work entry error', { error: error instanceof Error ? error.message : String(error) });
+    logError('Validate work entry error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to validate work entry',
@@ -1725,7 +1710,7 @@ export const updateProduction = async (req: AuthRequest, res: Response): Promise
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Update production error', { error: error instanceof Error ? error.message : String(error) });
+    logError('Update production error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to update production data',
@@ -1759,7 +1744,7 @@ export const getPendingValidationsList = async (req: AuthRequest, res: Response)
       basicEntries = await WorkEntry.find(query).lean() as any[];
       logger.debug('Basic entries found', { count: basicEntries.length });
     } catch (dbError) {
-      logger.error('Database query error', { error: dbError instanceof Error ? dbError.message : String(dbError) });
+      logError('Database query error', dbError);
       // Return empty array instead of error
       basicEntries = [];
     }
@@ -1773,10 +1758,7 @@ export const getPendingValidationsList = async (req: AuthRequest, res: Response)
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Get pending validations error', {
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined
-    });
+    logError('Get pending validations error', error);
     
     // Return empty array instead of error
     const response: ApiResponse = {
@@ -1966,7 +1948,7 @@ export const getProductReport = async (req: AuthRequest, res: Response): Promise
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Get product report error', { error: error instanceof Error ? error.message : String(error) });
+    logError('Get product report error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to retrieve product report',
@@ -2092,7 +2074,7 @@ export const getEmployeeDailySummary = async (req: AuthRequest, res: Response): 
     res.status(200).json(response);
     
   } catch (error: any) {
-    logger.error('Employee daily summary error', { error: error instanceof Error ? error.message : String(error) });
+    logError('Employee daily summary error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to retrieve employee daily summary',

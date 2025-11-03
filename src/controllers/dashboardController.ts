@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { ApiResponse } from '@/types';
 import { AuthRequest } from '@/middleware/auth';
 import dashboardService from '@/services/dashboardService';
-import logger from '@/utils/logger';
+import logger, { logError } from '@/utils/logger';
 import Attendance from '@/models/Attendance';
 import WorkEntry from '@/models/WorkEntry';
 import Process from '@/models/Process';
@@ -36,7 +36,7 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Get dashboard stats error', { error: error.message, stack: error.stack });
+    logError('Get dashboard stats error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to retrieve dashboard statistics',
@@ -71,7 +71,7 @@ export const getProductionStats = async (req: AuthRequest, res: Response): Promi
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Get production stats error', { error: error.message, stack: error.stack });
+    logError('Get production stats error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to retrieve production statistics',
@@ -92,7 +92,7 @@ export const testEndpoint = async (req: AuthRequest, res: Response): Promise<voi
     };
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Test endpoint error', { error: error.message, stack: error.stack });
+    logError('Test endpoint error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Test endpoint failed',
@@ -201,7 +201,7 @@ export const getProcessesWithStats = async (req: AuthRequest, res: Response): Pr
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Error fetching processes with stats', { error: error.message, stack: error.stack });
+    logError('Error fetching processes with stats', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to fetch processes with statistics',
@@ -348,10 +348,7 @@ export const getProductionSummary = async (req: AuthRequest, res: Response): Pro
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Get production summary error', { 
-      error: error.message, 
-      stack: error.stack 
-    });
+    logError('Get production summary error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to retrieve production summary',
@@ -386,7 +383,7 @@ export const getEfficiencyStats = async (req: AuthRequest, res: Response): Promi
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Get efficiency stats error', { error: error.message, stack: error.stack });
+    logError('Get efficiency stats error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to retrieve efficiency statistics',
@@ -465,7 +462,7 @@ export const getAttendanceStats = async (req: AuthRequest, res: Response): Promi
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Get attendance stats error', { error: error.message, stack: error.stack });
+    logError('Get attendance stats error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to retrieve attendance statistics',
@@ -540,7 +537,7 @@ export const getRejectionStats = async (req: AuthRequest, res: Response): Promis
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Get rejection stats error', { error: error.message, stack: error.stack });
+    logError('Get rejection stats error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to retrieve rejection statistics',

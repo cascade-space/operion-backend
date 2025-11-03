@@ -8,6 +8,7 @@ import { authenticate, authorize } from '@/middleware/auth';
 import { validateMongoId } from '@/middleware/commonValidation';
 import { handleValidationErrors } from '@/middleware/validation';
 import quantityService from '@/services/quantityService';
+import { logError } from '@/utils/logger';
 
 const router = Router();
 
@@ -67,7 +68,7 @@ router.get('/', authenticate, async (req, res) => {
 
     res.status(200).json(response);
   } catch (error: any) {
-    console.error('Get processes error:', error);
+    logError('Get processes error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to retrieve processes',
@@ -127,7 +128,7 @@ router.get('/:id', authenticate, validateMongoId, async (req, res) => {
 
     res.status(200).json(response);
   } catch (error: any) {
-    console.error('Get process error:', error);
+    logError('Get process error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to retrieve process',
@@ -140,19 +141,8 @@ router.get('/:id', authenticate, validateMongoId, async (req, res) => {
 // Create new process
 router.post('/', authenticate, authorize('super_admin', 'factory_admin'), validateProcess, async (req, res) => {
   try {
-    // Debug logging
-    console.log('🔍 Process creation request:', {
-      body: req.body,
-      user: {
-        id: req.user?.id,
-        role: req.user?.role,
-        factoryId: req.user?.factoryId
-      }
-    });
-
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      console.log('🔍 Validation errors:', errors.array());
       const response: ApiResponse = {
         success: false,
         error: 'Validation failed',
@@ -165,15 +155,7 @@ router.post('/', authenticate, authorize('super_admin', 'factory_admin'), valida
     const { name } = req.body;
     const factoryId = req.user?.role === 'super_admin' ? req.body.factoryId : req.user?.factoryId;
 
-    console.log('🔍 Factory ID logic:', {
-      userRole: req.user?.role,
-      bodyFactoryId: req.body.factoryId,
-      userFactoryId: req.user?.factoryId,
-      finalFactoryId: factoryId
-    });
-
     if (!factoryId) {
-      console.log('🔍 No factory ID found');
       const response: ApiResponse = {
         success: false,
         error: 'Factory ID is required',
@@ -203,7 +185,10 @@ router.post('/', authenticate, authorize('super_admin', 'factory_admin'), valida
 
     res.status(201).json(response);
   } catch (error: any) {
-    console.error('Create process error:', error);
+    logError('Create process error', error, {
+      userId: req.user?.id,
+      factoryId: req.user?.factoryId
+    });
     const response: ApiResponse = {
       success: false,
       error: 'Failed to create process',
@@ -304,7 +289,10 @@ router.put('/:id', authenticate, authorize('super_admin', 'factory_admin'), vali
 
     res.status(200).json(response);
   } catch (error: any) {
-    console.error('Update process error:', error);
+    logError('Update process error', error, {
+      processId: req.params?.id,
+      userId: req.user?.id
+    });
     const response: ApiResponse = {
       success: false,
       error: 'Failed to update process',
@@ -347,7 +335,7 @@ router.delete('/:id', authenticate, authorize('super_admin', 'factory_admin'), v
 
     res.status(200).json(response);
   } catch (error: any) {
-    console.error('Delete process error:', error);
+    logError('Delete process error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to delete process',
@@ -442,7 +430,7 @@ router.post('/:id/assign-employee', authenticate, authorize('super_admin', 'fact
 
     res.status(200).json(response);
   } catch (error: any) {
-    console.error('Assign employee error:', error);
+    logError('Assign employee error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to assign employee',
@@ -508,7 +496,7 @@ router.delete('/:id/remove-employee/:employeeId', authenticate, authorize('super
 
     res.status(200).json(response);
   } catch (error: any) {
-    console.error('Remove employee error:', error);
+    logError('Remove employee error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to remove employee',
@@ -565,7 +553,7 @@ router.patch('/:id/metrics', authenticate, authorize('super_admin', 'factory_adm
 
     res.status(200).json(response);
   } catch (error: any) {
-    console.error('Update metrics error:', error);
+    logError('Update metrics error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to update process metrics',
@@ -608,7 +596,7 @@ router.post('/:id/set-daily-target', authenticate, authorize('super_admin', 'fac
       res.status(500).json(response);
     }
   } catch (error: any) {
-    console.error('Set daily target error:', error);
+    logError('Set daily target error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to set daily target',
@@ -649,7 +637,7 @@ router.get('/:id/quantity-status', authenticate, async (req, res) => {
       res.status(200).json(response);
     }
   } catch (error: any) {
-    console.error('Get quantity status error:', error);
+    logError('Get quantity status error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to get quantity status',
@@ -680,7 +668,7 @@ router.post('/:id/unlock', authenticate, authorize('super_admin', 'factory_admin
       res.status(500).json(response);
     }
   } catch (error: any) {
-    console.error('Unlock stage error:', error);
+    logError('Unlock stage error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to unlock process stage',
@@ -721,7 +709,7 @@ router.post('/unlock-all', authenticate, authorize('super_admin', 'factory_admin
       res.status(500).json(response);
     }
   } catch (error: any) {
-    console.error('Unlock all stages error:', error);
+    logError('Unlock all stages error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to unlock all process stages',
@@ -755,7 +743,7 @@ router.get('/waterfall/:productId', authenticate, async (req, res) => {
     };
     res.status(200).json(response);
   } catch (error: any) {
-    console.error('Get waterfall view error:', error);
+    logError('Get waterfall view error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to get waterfall view',
@@ -787,7 +775,7 @@ router.post('/reset-daily/:factoryId', authenticate, authorize('super_admin', 'f
       res.status(500).json(response);
     }
   } catch (error: any) {
-    console.error('Reset daily quantities error:', error);
+    logError('Reset daily quantities error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to reset daily quantities',

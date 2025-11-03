@@ -222,7 +222,7 @@ export const getAttendanceByEmployee = async (req: AuthRequest, res: Response): 
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Get employee attendance error', { error: error.message, stack: error.stack });
+    logError('Get employee attendance error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to retrieve employee attendance',
@@ -308,7 +308,7 @@ export const getAttendanceHistory = async (req: AuthRequest, res: Response): Pro
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Get employee attendance history error', { error: error.message, stack: error.stack });
+    logError('Get employee attendance history error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to retrieve employee attendance history',
@@ -328,10 +328,7 @@ export const getTodayAttendance = async (req: AuthRequest, res: Response): Promi
     try {
       queryEmployeeId = new mongoose.Types.ObjectId(employeeId);
     } catch (error) {
-      logger.error('Invalid employeeId format in getTodayAttendance', {
-        employeeId,
-        error: error instanceof Error ? error.message : String(error)
-      });
+      logError('Invalid employeeId format in getTodayAttendance', error, { employeeId });
       const response: ApiResponse = {
         success: false,
         error: 'Invalid employee ID format',
@@ -347,7 +344,7 @@ export const getTodayAttendance = async (req: AuthRequest, res: Response): Promi
     const paramEmployeeIdStr = queryEmployeeId.toString();
     
     if (req.user && req.user.role === 'employee' && userEmployeeIdStr !== paramEmployeeIdStr) {
-      logger.error('Access denied - employee ID mismatch in getTodayAttendance', {
+      logError('Access denied - employee ID mismatch in getTodayAttendance', new Error('Employee ID mismatch'), {
         userEmployeeId: userEmployeeIdStr,
         paramEmployeeId: paramEmployeeIdStr,
         userId: req.user.id
@@ -453,7 +450,7 @@ export const getTodayAttendance = async (req: AuthRequest, res: Response): Promi
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Get today attendance error', { error: error.message, stack: error.stack });
+    logError('Get today attendance error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to retrieve today\'s attendance',
@@ -498,7 +495,7 @@ export const getTodayAttendanceList = async (req: AuthRequest, res: Response): P
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Get today attendance error', { error: error.message, stack: error.stack });
+    logError('Get today attendance error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to retrieve today\'s attendance',
@@ -549,7 +546,7 @@ export const checkIn = async (req: AuthRequest, res: Response): Promise<void> =>
     
     // Validate employeeId is present and valid MongoDB ObjectId
     if (!employeeId) {
-      logger.error('Check-in error: employeeId not found', {
+      logError('Check-in error: employeeId not found', new Error('EmployeeId not found'), {
         hasBodyEmployeeId: !!req.body.employeeId,
         hasUser: !!req.user,
         userId: req.user.id,
@@ -567,7 +564,7 @@ export const checkIn = async (req: AuthRequest, res: Response): Promise<void> =>
 
     // Ensure employeeId is a valid MongoDB ObjectId
     if (!mongoose.Types.ObjectId.isValid(employeeId)) {
-      logger.error('Check-in error: Invalid employeeId format', {
+      logError('Check-in error: Invalid employeeId format', new Error('Invalid employeeId format'), {
         employeeId,
         employeeIdType: typeof employeeId
       });
@@ -625,7 +622,7 @@ export const checkIn = async (req: AuthRequest, res: Response): Promise<void> =>
     // Get factory information for basic geofence check
     const employee = await User.findById(employeeId).populate('factoryId');
     if (!employee) {
-      logger.error('Check-in error: Employee not found', { employeeId });
+      logError('Check-in error: Employee not found', new Error('Employee not found'), { employeeId });
       const response: ApiResponse = {
         success: false,
         error: 'Employee not found',
@@ -826,7 +823,7 @@ export const checkOut = async (req: AuthRequest, res: Response): Promise<void> =
 
     // Ensure check-in exists
     if (!attendance.checkIn?.time) {
-      logger.error('Check-out error: No check-in found for attendance', { 
+      logError('Check-out error: No check-in found for attendance', new Error('No check-in found'), { 
         attendanceId: attendance._id 
       });
       const response: ApiResponse = {
@@ -902,10 +899,8 @@ export const checkOut = async (req: AuthRequest, res: Response): Promise<void> =
         workHours = (checkOutTime.getTime() - attendance.checkIn.time.getTime()) / (1000 * 60 * 60);
       }
     } catch (calcError: any) {
-      logger.error('Check-out: Error calculating work hours', {
-        attendanceId: attendance._id,
-        error: calcError.message,
-        stack: calcError.stack
+      logError('Check-out: Error calculating work hours', calcError, {
+        attendanceId: attendance._id
       });
       // Use fallback calculation
       workHours = (checkOutTime.getTime() - attendance.checkIn.time.getTime()) / (1000 * 60 * 60);
@@ -923,9 +918,7 @@ export const checkOut = async (req: AuthRequest, res: Response): Promise<void> =
     try {
       await attendance.save();
     } catch (saveError: any) {
-      logger.error('Check-out error: Failed to save attendance', {
-        error: saveError.message,
-        stack: saveError.stack,
+      logError('Check-out error: Failed to save attendance', saveError, {
         attendanceId: attendance._id,
         employeeId,
         code: saveError.code,
@@ -967,9 +960,7 @@ export const checkOut = async (req: AuthRequest, res: Response): Promise<void> =
         attendanceData = attendance.toObject();
       }
     } catch (populateError: any) {
-      logger.error('Check-out error: Failed to populate attendance', {
-        error: populateError.message,
-        stack: populateError.stack,
+      logError('Check-out error: Failed to populate attendance', populateError, {
         attendanceId: attendance._id
       });
       // Use the saved attendance without population as fallback
@@ -1057,7 +1048,7 @@ export const updateAttendanceStatus = async (req: AuthRequest, res: Response): P
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Update status error', { error: error.message, stack: error.stack });
+    logError('Update status error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to update attendance status',
@@ -1141,7 +1132,7 @@ export const createManualAttendance = async (req: AuthRequest, res: Response): P
 
     res.status(201).json(response);
   } catch (error: any) {
-    logger.error('Create manual attendance error', { error: error.message, stack: error.stack });
+    logError('Create manual attendance error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to create manual attendance record',
@@ -1186,7 +1177,7 @@ export const deleteAttendance = async (req: AuthRequest, res: Response): Promise
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Delete attendance error', { error: error.message, stack: error.stack });
+    logError('Delete attendance error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to delete attendance record',
@@ -1296,7 +1287,7 @@ export const markAbsent = async (req: AuthRequest, res: Response): Promise<void>
 
     res.status(200).json(response);
   } catch (error: any) {
-    logger.error('Mark absent error', { error: error.message, stack: error.stack });
+    logError('Mark absent error', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to mark employees as absent',

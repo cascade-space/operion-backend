@@ -12,7 +12,7 @@ import ExcelJS from 'exceljs';
 import PDFDocument from 'pdfkit';
 import mongoose from 'mongoose';
 import quantityService from '../services/quantityService';
-import logger from '../utils/logger';
+import logger, { logError } from '../utils/logger';
 
 const router = express.Router();
 
@@ -79,7 +79,7 @@ router.get('/trends', authenticate, async (req, res) => {
       data: { trends }
     });
   } catch (error) {
-    console.error('Error fetching trends:', error);
+    logError('Error fetching trends', error);
     res.status(500).json({ success: false, error: 'Failed to fetch trends' });
   }
 });
@@ -132,7 +132,7 @@ router.get('/production', authenticate, async (req, res) => {
       data: { production }
     });
   } catch (error) {
-    console.error('Error fetching production data:', error);
+    logError('Error fetching production data', error);
     res.status(500).json({ success: false, error: 'Failed to fetch production data' });
   }
 });
@@ -179,7 +179,7 @@ router.get('/quality', authenticate, async (req, res) => {
       data: { quality }
     });
   } catch (error) {
-    console.error('Error fetching quality data:', error);
+    logError('Error fetching quality data', error);
     res.status(500).json({ success: false, error: 'Failed to fetch quality data' });
   }
 });
@@ -233,7 +233,7 @@ router.get('/employee-performance', authenticate, async (req, res) => {
       data: { employeePerformance }
     });
   } catch (error) {
-    console.error('Error fetching employee performance:', error);
+    logError('Error fetching employee performance', error);
     res.status(500).json({ success: false, error: 'Failed to fetch employee performance' });
   }
 });
@@ -374,7 +374,7 @@ router.get('/comprehensive', authenticate, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error fetching comprehensive report:', error);
+    logError('Error fetching comprehensive report', error);
     res.status(500).json({ success: false, error: 'Failed to fetch comprehensive report' });
   }
 });
@@ -495,7 +495,7 @@ router.get('/employee/:employeeId', authenticate, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error fetching employee performance:', error);
+    logError('Error fetching employee performance', error);
     res.status(500).json({ success: false, error: 'Failed to fetch employee performance' });
   }
 });
@@ -529,7 +529,7 @@ router.get('/factory-summary/:factoryId', authenticate, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error fetching factory summary:', error);
+    logError('Error fetching factory summary', error);
     res.status(500).json({ success: false, error: 'Failed to fetch factory summary' });
   }
 });
@@ -578,7 +578,7 @@ router.get('/team-performance/:supervisorId', authenticate, async (req, res) => 
       data: { summary }
     });
   } catch (error) {
-    console.error('Error fetching team performance:', error);
+    logError('Error fetching team performance', error);
     res.status(500).json({ success: false, error: 'Failed to fetch team performance' });
   }
 });
@@ -1159,11 +1159,9 @@ router.get('/export/:format', authenticate, async (req, res) => {
     }
     
   } catch (error) {
-    console.error('Error exporting report:', error);
-    console.error('Error details:', {
-      message: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined,
-      name: error instanceof Error ? error.name : undefined
+    logError('Error exporting report', error, {
+      format: req.params?.format,
+      userId: (req as any).user?.id
     });
     res.status(500).json({ 
       success: false, 
@@ -1303,7 +1301,7 @@ router.get('/production-detailed', authenticate, async (req, res) => {
       totalEntries: detailedData.length
     });
   } catch (error) {
-    console.error('Error fetching detailed production data:', error);
+    logError('Error fetching detailed production data', error);
     res.status(500).json({ success: false, error: 'Failed to fetch detailed production data' });
   }
 });
@@ -1453,7 +1451,7 @@ router.get('/process-stages-analysis', authenticate, async (req, res) => {
       totalProducts: productProcessData.length
     });
   } catch (error) {
-    console.error('Error fetching process stages analysis:', error);
+    logError('Error fetching process stages analysis', error);
     res.status(500).json({ success: false, error: 'Failed to fetch process stages analysis' });
   }
 });
@@ -1592,7 +1590,7 @@ router.get('/employee-performance', authenticate, async (req, res) => {
       totalEmployees: employeePerformance.length
     });
   } catch (error) {
-    console.error('Error fetching employee performance:', error);
+    logError('Error fetching employee performance', error);
     res.status(500).json({ success: false, error: 'Failed to fetch employee performance' });
   }
 });
@@ -1891,7 +1889,7 @@ router.get('/process-stages-summary', authenticate, async (req, res) => {
       data: result
     });
   } catch (error) {
-    console.error('Error fetching process stages summary:', error);
+    logError('Error fetching process stages summary', error);
     res.status(500).json({ 
       success: false, 
       error: 'Failed to fetch process stages summary' 
@@ -2284,7 +2282,7 @@ router.get('/process-stages-summary/export/:format', authenticate, async (req, r
     }
     
   } catch (error) {
-    console.error('Error exporting process stages summary:', error);
+    logError('Error exporting process stages summary', error);
     res.status(500).json({ success: false, error: 'Failed to export process stages summary' });
   }
 });
@@ -2565,7 +2563,7 @@ router.get('/product-process-stages', authenticate, async (req, res) => {
       data: result
     });
   } catch (error) {
-    console.error('Error fetching product process stages:', error);
+    logError('Error fetching product process stages', error);
     res.status(500).json({ 
       success: false, 
       error: 'Failed to fetch product process stages' 
@@ -2878,7 +2876,7 @@ router.get('/realtime-display', authenticate, async (req, res) => {
                 );
               } catch (qtyError: any) {
                 // Log but don't fail - use fallback
-                console.warn('Failed to calculate cumulative available quantity:', qtyError?.message);
+                logger.warn('Failed to calculate cumulative available quantity', { error: qtyError?.message });
                 availableQuantity = processStage.availableQuantity || 0;
               }
             } else {
@@ -2912,7 +2910,11 @@ router.get('/realtime-display', authenticate, async (req, res) => {
           ).length
         };
       } catch (entryError: any) {
-        console.error('Error processing work entry data:', entryError);
+        // Log error but don't fail entire request - return minimal data structure
+        logger.warn('Error processing work entry data', {
+          error: entryError instanceof Error ? entryError.message : String(entryError),
+          entryId: entry._id
+        });
         // Return minimal data structure to prevent complete failure
         return {
           productId: entry._id?.productId || '',
@@ -3112,13 +3114,9 @@ router.get('/realtime-display', authenticate, async (req, res) => {
       data: result
     });
   } catch (error: any) {
-    console.error('Error fetching realtime display data:', error);
-    console.error('Error stack:', error?.stack);
-    logger.error('Realtime display error', {
-      error: error?.message || String(error),
-      stack: error?.stack,
+    logError('Realtime display error', error, {
       factoryId: req.query?.factoryId,
-      userId: req.user?.id
+      userId: (req as any).user?.id
     });
     res.status(500).json({ 
       success: false, 
@@ -3459,7 +3457,7 @@ router.get('/product-process-stages/export/:format', authenticate, async (req, r
     }
     
   } catch (error) {
-    console.error('Error exporting product process stages:', error);
+    logError('Error exporting product process stages', error);
     res.status(500).json({ success: false, error: 'Failed to export product process stages' });
   }
 });
