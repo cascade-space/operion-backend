@@ -12,6 +12,7 @@ import ExcelJS from 'exceljs';
 import PDFDocument from 'pdfkit';
 import mongoose from 'mongoose';
 import quantityService from '../services/quantityService';
+import logger from '../utils/logger';
 
 const router = express.Router();
 
@@ -2811,7 +2812,8 @@ router.get('/realtime-display', authenticate, async (req, res) => {
 
     // Calculate expected production based on current time
     const currentTime = new Date();
-    const startOfDay = new Date(currentTime.setHours(0, 0, 0, 0));
+    const startOfDay = new Date(currentTime);
+    startOfDay.setHours(0, 0, 0, 0);
     const currentHour = currentTime.getHours();
     const totalWorkHours = 10; // Assuming 8 AM to 6 PM shift
     const hoursElapsed = Math.max(0, Math.min(currentHour - 8, totalWorkHours)); // 8 AM start
@@ -2832,64 +2834,103 @@ router.get('/realtime-display', authenticate, async (req, res) => {
     .populate('productId', 'name')
     .populate('processId', 'name');
 
-    const activeSessions = activeWorkSessions.map(session => ({
-      productId: session.productId._id,
-      productName: (session.productId as any).name,
-      processId: session.processId._id,
-      processName: (session.processId as any).name,
-      employeeName: `${(session.employeeId as any).profile.firstName} ${(session.employeeId as any).profile.lastName}`,
-      startTime: session.createdAt,
-      currentAchieved: session.achieved,
-      currentRejected: session.rejected
-    }));
+    const activeSessions = activeWorkSessions
+      .filter(session => session.productId && session.processId && session.employeeId)
+      .map(session => ({
+        productId: (session.productId as any)?._id || session.productId,
+        productName: (session.productId as any)?.name || 'Unknown',
+        processId: (session.processId as any)?._id || session.processId,
+        processName: (session.processId as any)?.name || 'Unknown',
+        employeeName: (session.employeeId as any)?.profile 
+          ? `${(session.employeeId as any).profile.firstName || ''} ${(session.employeeId as any).profile.lastName || ''}`.trim() || 'Unknown'
+          : 'Unknown',
+        startTime: session.createdAt || new Date(),
+        currentAchieved: session.achieved || 0,
+        currentRejected: session.rejected || 0
+      }));
 
     // Combine data and calculate cumulative available quantities
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
     const combinedData = await Promise.all(workEntryData.map(async (entry) => {
-      const processStage = processStageData.find(ps => 
-        ps.productId._id.toString() === entry._id.productId.toString() &&
-        ps.processId._id.toString() === entry._id.processId.toString()
-      );
-      
-      // Calculate cumulative available quantity (previous days + today)
-      let availableQuantity = 0;
-      if (processStage) {
-        // Get product to find factoryId
-        const product = await Product.findById(entry._id.productId);
-        if (product && product.factoryId) {
-          availableQuantity = await quantityService.calculateCumulativeAvailableQuantity(
-            product.factoryId,
-            new mongoose.Types.ObjectId(entry._id.productId),
-            new mongoose.Types.ObjectId(entry._id.processId),
-            today
-          );
-        } else {
-          // Fallback to today's value if product not found
-          availableQuantity = processStage.availableQuantity || 0;
+      try {
+        const processStage = processStageData.find(ps => 
+          ps.productId && ps.processId &&
+          ps.productId._id && ps.processId._id &&
+          ps.productId._id.toString() === entry._id.productId.toString() &&
+          ps.processId._id.toString() === entry._id.processId.toString()
+        );
+        
+        // Calculate cumulative available quantity (previous days + today)
+        let availableQuantity = 0;
+        if (processStage) {
+          try {
+            // Get product to find factoryId
+            const product = await Product.findById(entry._id.productId);
+            if (product && product.factoryId) {
+              try {
+                availableQuantity = await quantityService.calculateCumulativeAvailableQuantity(
+                  product.factoryId,
+                  new mongoose.Types.ObjectId(entry._id.productId),
+                  new mongoose.Types.ObjectId(entry._id.processId),
+                  today
+                );
+              } catch (qtyError: any) {
+                // Log but don't fail - use fallback
+                console.warn('Failed to calculate cumulative available quantity:', qtyError?.message);
+                availableQuantity = processStage.availableQuantity || 0;
+              }
+            } else {
+              // Fallback to today's value if product not found
+              availableQuantity = processStage.availableQuantity || 0;
+            }
+          } catch (productError: any) {
+            console.warn('Error fetching product for quantity calculation:', productError?.message);
+            availableQuantity = processStage.availableQuantity || 0;
+          }
         }
+        
+        return {
+          productId: entry._id.productId,
+          productName: entry._id.productName || 'Unknown',
+          productCode: entry._id.productCode || '',
+          processId: entry._id.processId,
+          processName: entry._id.processName || 'Unknown',
+          stageOrder: entry._id.stageOrder || 0,
+          achievedQuantity: entry.achievedQuantity || 0,
+          rejectedQuantity: entry.rejectedQuantity || 0,
+          availableQuantity,
+          targetQuantity: entry.targetQuantity || 0,
+          workEntryCount: entry.workEntryCount || 0,
+          efficiency: entry.targetQuantity > 0 ? (entry.achievedQuantity / entry.targetQuantity) * 100 : 0,
+          latestEntry: entry.latestEntry || new Date(),
+          activeWorkSessions: activeSessions.filter(session => 
+            session.productId && session.processId &&
+            session.productId.toString() === entry._id.productId.toString() &&
+            session.processId.toString() === entry._id.processId.toString()
+          ).length
+        };
+      } catch (entryError: any) {
+        console.error('Error processing work entry data:', entryError);
+        // Return minimal data structure to prevent complete failure
+        return {
+          productId: entry._id?.productId || '',
+          productName: entry._id?.productName || 'Unknown',
+          productCode: entry._id?.productCode || '',
+          processId: entry._id?.processId || '',
+          processName: entry._id?.processName || 'Unknown',
+          stageOrder: entry._id?.stageOrder || 0,
+          achievedQuantity: entry.achievedQuantity || 0,
+          rejectedQuantity: entry.rejectedQuantity || 0,
+          availableQuantity: 0,
+          targetQuantity: entry.targetQuantity || 0,
+          workEntryCount: entry.workEntryCount || 0,
+          efficiency: 0,
+          latestEntry: entry.latestEntry || new Date(),
+          activeWorkSessions: 0
+        };
       }
-      
-      return {
-        productId: entry._id.productId,
-        productName: entry._id.productName,
-        productCode: entry._id.productCode,
-        processId: entry._id.processId,
-        processName: entry._id.processName,
-        stageOrder: entry._id.stageOrder,
-        achievedQuantity: entry.achievedQuantity,
-        rejectedQuantity: entry.rejectedQuantity,
-        availableQuantity,
-        targetQuantity: entry.targetQuantity,
-        workEntryCount: entry.workEntryCount,
-        efficiency: entry.targetQuantity > 0 ? (entry.achievedQuantity / entry.targetQuantity) * 100 : 0,
-        latestEntry: entry.latestEntry,
-        activeWorkSessions: activeSessions.filter(session => 
-          session.productId.toString() === entry._id.productId.toString() &&
-          session.processId.toString() === entry._id.processId.toString()
-        ).length
-      };
     }));
 
     // Group by product
@@ -3070,11 +3111,19 @@ router.get('/realtime-display', authenticate, async (req, res) => {
       success: true,
       data: result
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching realtime display data:', error);
+    console.error('Error stack:', error?.stack);
+    logger.error('Realtime display error', {
+      error: error?.message || String(error),
+      stack: error?.stack,
+      factoryId: req.query?.factoryId,
+      userId: req.user?.id
+    });
     res.status(500).json({ 
       success: false, 
-      error: 'Failed to fetch realtime display data' 
+      error: 'Failed to fetch realtime display data',
+      details: process.env.NODE_ENV === 'development' ? error?.message : undefined
     });
   }
 });
