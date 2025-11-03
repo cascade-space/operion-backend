@@ -50,71 +50,7 @@ app.set('trust proxy', true);
 // Export app for testing
 export { app };
 
-// Rate limiting - Use Redis if available, otherwise fallback to memory store
-// In development, use much more lenient limits or disable entirely
-const useRedisRateLimit = env.REDIS_URL || env.REDIS_HOST;
-const isDevelopment = env.NODE_ENV === 'development';
-
-// Much more lenient rate limits for development
-const rateLimitWindowMs = env.RATE_LIMIT_WINDOW_MS; // 15 minutes default
-const rateLimitMax = isDevelopment 
-  ? 10000 // 10,000 requests per window in development (effectively unlimited)
-  : env.RATE_LIMIT_MAX_REQUESTS; // Use configured limit in production
-
-if (useRedisRateLimit && redisService.getConnectionStatus()) {
-  // Use Redis-based rate limiting for distributed systems
-  const redisLimiter = createRateLimiter({
-    windowMs: rateLimitWindowMs,
-    max: rateLimitMax,
-    message: 'Too many requests from this IP, please try again later.',
-    skip: (req) => {
-      // Skip rate limiting for health check endpoint and in development
-      return req.path === '/health' || isDevelopment;
-    }
-  });
-  app.use(redisLimiter);
-} else {
-  // Fallback to memory-based rate limiting
-  const limiter = rateLimit({
-    windowMs: rateLimitWindowMs,
-    max: rateLimitMax,
-    message: {
-      success: false,
-      error: 'Too many requests from this IP, please try again later.',
-      status: 429
-    },
-    standardHeaders: true,
-    legacyHeaders: false,
-    skip: (req) => {
-      // Skip rate limiting for health check endpoint
-      // Note: We're already using high limits in development, so skip is mainly for health checks
-      return req.path === '/health';
-    }
-  });
-  app.use(limiter);
-}
-
-// Security middleware
-app.use(helmet({
-  crossOriginEmbedderPolicy: false,
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "https:"],
-    },
-  },
-  hsts: {
-    maxAge: 31536000, // 1 year
-    includeSubDomains: true,
-    preload: true,
-  },
-  noSniff: true,
-  xssFilter: true,
-}));
-
-// CORS configuration - Environment-based
+// CORS configuration - MUST be defined early to handle preflight requests before other middleware
 const getCorsOrigins = (): string[] => {
   const defaultDevOrigins = [
     'http://localhost:8080',
@@ -180,15 +116,114 @@ if (env.NODE_ENV === 'production') {
   });
 }
 
+// CRITICAL FIX: Handle OPTIONS preflight requests as FIRST middleware
+// This MUST run before Helmet, rate limiting, and other middleware
+app.use((req, res, next) => {
+  // Only handle OPTIONS requests (preflight)
+  if (req.method === 'OPTIONS') {
+    const origin = req.headers.origin;
+    
+    // Allow server-to-server requests (no origin header)
+    if (!origin) {
+      res.status(200).end();
+      return;
+    }
+    
+    // Normalize origin (remove trailing slashes) for comparison
+    const normalizedOrigin = origin.replace(/\/+$/, '');
+    
+    // Check if origin is in allowed list
+    // CRITICAL: Do NOT allow if allowedOrigins.length === 0 (security issue)
+    const isAllowed = allowedOrigins.length > 0 && 
+      (allowedOrigins.indexOf(normalizedOrigin) !== -1 || 
+       allowedOrigins.indexOf(origin) !== -1);
+    
+    if (isAllowed) {
+      // Send CORS headers for allowed origins
+      res.header('Access-Control-Allow-Origin', origin);
+      res.header('Access-Control-Allow-Credentials', 'true');
+      res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+      res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, Access-Control-Request-Method, Access-Control-Request-Headers');
+      res.header('Access-Control-Max-Age', '86400'); // 24 hours
+      res.status(200).end();
+      return; // Stop here, don't continue to other middleware
+    } else {
+      // Origin not allowed - log and block
+      if (allowedOrigins.length === 0) {
+        logger.warn('CORS preflight blocked: No allowed origins configured', { 
+          origin,
+          normalizedOrigin 
+        });
+      } else {
+        logger.warn('CORS preflight blocked: Origin not in allowed list', { 
+          origin,
+          normalizedOrigin,
+          allowedOrigins 
+        });
+      }
+      // Send 403 but still respond (browser will block actual request)
+      res.status(403).end();
+      return;
+    }
+  }
+  // Not an OPTIONS request, continue to next middleware
+  next();
+});
+
+// Rate limiting - Use Redis if available, otherwise fallback to memory store
+// In development, use much more lenient limits or disable entirely
+const useRedisRateLimit = env.REDIS_URL || env.REDIS_HOST;
+const isDevelopment = env.NODE_ENV === 'development';
+
+// Much more lenient rate limits for development
+const rateLimitWindowMs = env.RATE_LIMIT_WINDOW_MS; // 15 minutes default
+const rateLimitMax = isDevelopment 
+  ? 10000 // 10,000 requests per window in development (effectively unlimited)
+  : env.RATE_LIMIT_MAX_REQUESTS; // Use configured limit in production
+
+if (useRedisRateLimit && redisService.getConnectionStatus()) {
+  // Use Redis-based rate limiting for distributed systems
+  const redisLimiter = createRateLimiter({
+    windowMs: rateLimitWindowMs,
+    max: rateLimitMax,
+    message: 'Too many requests from this IP, please try again later.',
+    skip: (req) => {
+      // Skip rate limiting for health check endpoint and in development
+      return req.path === '/health' || isDevelopment;
+    }
+  });
+  app.use(redisLimiter);
+} else {
+  // Fallback to memory-based rate limiting
+  const limiter = rateLimit({
+    windowMs: rateLimitWindowMs,
+    max: rateLimitMax,
+    message: {
+      success: false,
+      error: 'Too many requests from this IP, please try again later.',
+      status: 429
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: (req) => {
+      // Skip rate limiting for health check endpoint
+      // Note: We're already using high limits in development, so skip is mainly for health checks
+      return req.path === '/health';
+    }
+  });
+  app.use(limiter);
+}
+
+// CORS middleware for actual requests (preflight is handled above)
 const corsOptions = {
   origin: function (origin: string | undefined, callback: Function) {
-    // Enhanced logging in development
+    // Enhanced logging for CORS issues
     if (env.NODE_ENV === 'development') {
       logger.info('CORS request received', { 
         origin: origin || '(no origin)', 
         allowedOrigins, 
         hasOrigin: !!origin,
-        originAllowed: origin ? allowedOrigins.indexOf(origin) !== -1 : 'N/A (no origin)'
+        originAllowed: origin ? (allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.indexOf(origin.replace(/\/+$/, '')) !== -1) : 'N/A (no origin)'
       });
     }
     
@@ -211,21 +246,37 @@ const corsOptions = {
       return callback(null, true);
     }
     
+    // CRITICAL: If no origins are configured in production, block all browser requests
     if (allowedOrigins.length === 0) {
-      logger.error('CORS: No allowed origins configured. Set CORS_ORIGINS environment variable.');
+      const errorMsg = 'CORS: No allowed origins configured. Set CORS_ORIGINS environment variable.';
+      logger.error(errorMsg, { 
+        origin,
+        environment: env.NODE_ENV,
+        hint: 'Example: CORS_ORIGINS=https://www.cascade-erp.in,https://cascade-erp.in'
+      });
       return callback(new Error('CORS not configured'));
     }
     
     // Normalize origin (remove trailing slashes) for comparison
     const normalizedOrigin = origin.replace(/\/+$/, '');
     
-    if (allowedOrigins.indexOf(normalizedOrigin) !== -1 || allowedOrigins.indexOf(origin) !== -1) {
+    // Check both normalized and original origin in allowed list
+    const isAllowed = allowedOrigins.indexOf(normalizedOrigin) !== -1 || 
+                      allowedOrigins.indexOf(origin) !== -1;
+    
+    if (isAllowed) {
       if (env.NODE_ENV === 'development') {
         logger.info('CORS: Allowing origin', { origin, normalizedOrigin, allowedOrigins });
       }
       callback(null, true);
     } else {
-      logger.warn('CORS: Blocking origin', { origin, normalizedOrigin, allowedOrigins });
+      // Log blocking in production for debugging
+      logger.warn('CORS: Blocking origin - not in allowed list', { 
+        origin, 
+        normalizedOrigin, 
+        allowedOrigins,
+        environment: env.NODE_ENV 
+      });
       callback(new Error(`Not allowed by CORS. Origin: ${origin} not in allowed list: ${allowedOrigins.join(', ')}`));
     }
   },
@@ -246,10 +297,26 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
-// Explicit OPTIONS handler for preflight requests - ensure CORS headers are always sent
-app.options('*', cors(corsOptions), (req, res) => {
-  res.status(200).end();
-});
+// Security middleware
+app.use(helmet({
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: 'cross-origin' }, // Allow cross-origin resource sharing
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:"],
+    },
+  },
+  hsts: {
+    maxAge: 31536000, // 1 year
+    includeSubDomains: true,
+    preload: true,
+  },
+  noSniff: true,
+  xssFilter: true,
+}));
 
 // Compression middleware
 app.use(compression());
