@@ -900,23 +900,22 @@ class QuantityService {
           // First process stage - always allow
           return { canStart: true };
         } else if (processOrder && processOrder > 1) {
-          // Get previous process achieved quantity from work entries
+          // Get previous process and calculate cumulative available quantity
           const previousProcess = product.processes?.find(p => p.order === processOrder - 1);
           if (previousProcess) {
             const today = new Date();
             today.setHours(0, 0, 0, 0);
-            const tomorrow = new Date(today);
-            tomorrow.setDate(tomorrow.getDate() + 1);
 
-            const previousStageEntries = await WorkEntry.find({
-              processId: new Types.ObjectId(previousProcess.processId),
-              productId: new Types.ObjectId(productId),
-              createdAt: { $gte: today, $lt: tomorrow }
-            });
+            // Calculate cumulative available quantity from previous stage
+            // This includes all previous days' remaining availableQuantity + today's availableQuantity
+            const cumulativeAvailableQuantity = await this.calculateCumulativeAvailableQuantity(
+              product.factoryId,
+              new Types.ObjectId(productId),
+              new Types.ObjectId(previousProcess.processId),
+              today
+            );
             
-            const availableQuantity = previousStageEntries.reduce((sum, entry) => sum + (entry.achieved || 0), 0);
-            
-            if (availableQuantity <= 0) {
+            if (cumulativeAvailableQuantity <= 0) {
               return { canStart: false, reason: 'No quantity available from previous stage' };
             }
             
