@@ -244,20 +244,28 @@ class QuantityService {
       availableQuantity = 999999; // Unlimited for first stage
       console.log('🔍 First stage - setting unlimited quantity:', availableQuantity);
     } else {
-      // For non-first stages, calculate cumulative available quantity:
-      // sum of all previous days' remaining availableQuantity + today's availableQuantity
-      availableQuantity = await this.calculateCumulativeAvailableQuantity(
-        stageInfo.product.factoryId,
-        new Types.ObjectId(productId),
-        new Types.ObjectId(processId),
-        today
-      );
-      console.log('🔍 Cumulative available quantity for current stage:', {
-        cumulativeAvailable: availableQuantity,
-        todayAvailable: currentStage?.availableQuantity || 0,
-        currentStageAchieved: currentStage?.achievedQuantity || 0,
-        currentStageRejected: currentStage?.rejectedQuantity || 0
-      });
+      // For non-first stages, calculate cumulative available quantity from PREVIOUS stage:
+      // sum of all previous days' remaining availableQuantity + today's availableQuantity from the previous stage
+      if (stageInfo.previousProcess) {
+        availableQuantity = await this.calculateCumulativeAvailableQuantity(
+          stageInfo.product.factoryId,
+          new Types.ObjectId(productId),
+          new Types.ObjectId(stageInfo.previousProcess.processId), // Use PREVIOUS stage's processId
+          today
+        );
+        console.log('🔍 Cumulative available quantity from previous stage:', {
+          currentProcessId: processId,
+          previousProcessId: stageInfo.previousProcess.processId,
+          cumulativeAvailable: availableQuantity,
+          todayAvailable: previousStage?.availableQuantity || 0,
+          currentStageAchieved: currentStage?.achievedQuantity || 0,
+          currentStageRejected: currentStage?.rejectedQuantity || 0
+        });
+      } else {
+        // Fallback if previous process not found
+        availableQuantity = 0;
+        console.log('⚠️ No previous process found for cumulative calculation');
+      }
     }
     
     // Dynamically check and update locking status based on cumulative available quantity
