@@ -195,11 +195,14 @@ app.use((req, res, next) => {
 const useRedisRateLimit = env.REDIS_URL || env.REDIS_HOST;
 const isDevelopment = env.NODE_ENV === 'development';
 
-// Much more lenient rate limits for development
-const rateLimitWindowMs = env.RATE_LIMIT_WINDOW_MS; // 15 minutes default
+// Fast rate limiting: 2-second window with 50 requests per user
+// This prevents one employee's refreshes from affecting others sharing the same IP
+const rateLimitWindowMs = isDevelopment 
+  ? (env.RATE_LIMIT_WINDOW_MS || 2000) // Use env or default to 2 seconds
+  : 2000; // 2 seconds in production (very fast reset)
 const rateLimitMax = isDevelopment 
   ? 10000 // 10,000 requests per window in development (effectively unlimited)
-  : env.RATE_LIMIT_MAX_REQUESTS; // Use configured limit in production
+  : (env.RATE_LIMIT_MAX_REQUESTS || 50); // 50 requests per 2 seconds in production
 
 // Helper to add CORS headers to rate limit responses (for express-rate-limit)
 const addCorsToRateLimitResponse = (req: Request, res: Response) => {
@@ -224,15 +227,17 @@ if (useRedisRateLimit && redisService.getConnectionStatus()) {
   const redisLimiter = createRateLimiter({
     windowMs: rateLimitWindowMs,
     max: rateLimitMax,
-    message: 'Too many requests from this IP, please try again later.',
+    message: 'Too many requests. Please wait a moment before trying again.',
     allowedOrigins: allowedOrigins, // Pass allowed origins to rate limiter for CORS headers
     skip: (req) => {
       // Skip rate limiting for:
       // - Health check endpoint
+      // - CSRF token endpoint (unauthenticated, needed frequently)
       // - Auth refresh endpoint (users need frequent token refreshes, already protected by refresh token)
       // - Realtime display endpoint (allows unlimited refreshes for display screens)
       // - Development mode
       return req.path === '/health' || 
+             req.path === '/api/csrf-token' ||
              req.path === '/api/auth/refresh' || 
              req.path === '/api/v1/auth/refresh' ||
              req.path === '/api/reports/realtime-display' ||
@@ -249,7 +254,7 @@ if (useRedisRateLimit && redisService.getConnectionStatus()) {
     max: rateLimitMax,
     message: {
       success: false,
-      error: 'Too many requests from this IP, please try again later.',
+      error: 'Too many requests. Please wait a moment before trying again.',
       status: 429
     },
     standardHeaders: true,
@@ -260,16 +265,18 @@ if (useRedisRateLimit && redisService.getConnectionStatus()) {
       
       res.status(429).json({
         success: false,
-        error: 'Too many requests from this IP, please try again later.',
+        error: 'Too many requests. Please wait a moment before trying again.',
         status: 429
       });
     },
     skip: (req) => {
       // Skip rate limiting for:
       // - Health check endpoint
+      // - CSRF token endpoint (unauthenticated, needed frequently)
       // - Auth refresh endpoint (users need frequent token refreshes, already protected by refresh token)
       // - Realtime display endpoint (allows unlimited refreshes for display screens)
       return req.path === '/health' || 
+             req.path === '/api/csrf-token' ||
              req.path === '/api/auth/refresh' || 
              req.path === '/api/v1/auth/refresh' ||
              req.path === '/api/reports/realtime-display' ||

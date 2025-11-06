@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import jwt from 'jsonwebtoken';
 import redisService from '@/services/redisService';
 import logger from '@/utils/logger';
 
@@ -73,8 +74,41 @@ export const createRateLimiter = (options: RateLimitOptions) => {
     }
 
     try {
-      const identifier = req.ip || req.headers['x-forwarded-for'] || 'unknown';
-      const key = `rate_limit:${identifier}`;
+      // Extract user ID from JWT token if present (per-user rate limiting)
+      // This prevents one employee's refreshes from affecting others sharing the same IP
+      // We decode the token here since rate limiter runs before authentication middleware
+      let userId: string | null = null;
+      
+      // First check if req.user is already populated (from optionalAuth middleware)
+      if ((req as any).user) {
+        userId = (req as any).user?.id || (req as any).user?._id?.toString() || null;
+      }
+      
+      // If not available, try to decode JWT token from Authorization header
+      if (!userId) {
+        const authHeader = req.headers.authorization;
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+          const token = authHeader.substring(7);
+          try {
+            // Decode without verification (we just need the user ID for rate limiting)
+            // Verification will happen later in authentication middleware
+            const decoded = jwt.decode(token) as any;
+            if (decoded && decoded.userId && decoded.type === 'access') {
+              userId = decoded.userId.toString();
+            }
+          } catch (error) {
+            // Token decode failed, continue with IP-based limiting
+            // This is fine - rate limiting shouldn't fail if token is invalid
+          }
+        }
+      }
+      
+      const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+      
+      // Use user ID for authenticated requests, IP for unauthenticated
+      const identifier = userId || ip;
+      const identifierType = userId ? 'user' : 'ip';
+      const key = `rate_limit:${identifierType}:${identifier}`;
 
       // Get current count
       const current = await redisService.get(key);
@@ -94,7 +128,9 @@ export const createRateLimiter = (options: RateLimitOptions) => {
         
         const response = {
           success: false,
-          error: message || 'Too many requests from this IP, please try again later.',
+          error: message || (userId 
+            ? 'Too many requests. Please wait a moment before trying again.' 
+            : 'Too many requests from this IP, please try again later.'),
           status: 429
         };
         res.status(429).json(response);
@@ -105,10 +141,10 @@ export const createRateLimiter = (options: RateLimitOptions) => {
       const newCount = count + 1;
       
       if (count === 0) {
-        // First request - set with expiration
+        // First request - set with expiration (2 seconds)
         await redisService.setex(key, Math.ceil(windowMs / 1000), newCount.toString());
       } else {
-        // Update count
+        // Update count (TTL is already set from first request)
         await redisService.set(key, newCount.toString());
       }
 
