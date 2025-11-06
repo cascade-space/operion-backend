@@ -311,20 +311,146 @@ class QuantityService {
       availableQuantity = 999999; // Unlimited for first stage
       console.log('🔍 First stage - setting unlimited quantity:', availableQuantity);
     } else {
-      // For non-first stages, calculate cumulative available quantity:
-      // sum of all previous days' remaining availableQuantity + today's availableQuantity
-      availableQuantity = await this.calculateCumulativeAvailableQuantity(
-        stageInfo.product.factoryId,
-        new Types.ObjectId(productId),
-        new Types.ObjectId(processId),
-        today
-      );
-      console.log('🔍 Cumulative available quantity for current stage:', {
-        cumulativeAvailable: availableQuantity,
-        todayAvailable: currentStage?.availableQuantity || 0,
-        currentStageAchieved: currentStage?.achievedQuantity || 0,
-        currentStageRejected: currentStage?.rejectedQuantity || 0
-      });
+      // For non-first stages, calculate available quantity based on WorkEntry aggregates:
+      // Available = Previous stage's achieved (all days) - Current stage's consumed (all days)
+      
+      if (!stageInfo.previousProcess) {
+        console.warn('⚠️ No previous process found for non-first stage');
+        availableQuantity = 0;
+      } else {
+        const previousProcessId = stageInfo.previousProcess.processId;
+        const currentProcessOrder = stageInfo.currentProcess.order;
+        const previousProcessOrder = stageInfo.previousProcess.order;
+        
+        // Query WorkEntry to sum previous stage's achieved quantities (all days)
+        const previousStageAchieved = await WorkEntry.aggregate([
+          {
+            $match: {
+              productId: new Types.ObjectId(productId),
+              processId: new Types.ObjectId(previousProcessId),
+              factoryId: stageInfo.product.factoryId,
+              // Include all days - no date filter
+            }
+          },
+          {
+            $group: {
+              _id: null,
+              totalAchieved: { $sum: '$achieved' }
+            }
+          }
+        ]);
+        
+        const previousTotalAchieved = previousStageAchieved.length > 0 
+          ? (previousStageAchieved[0].totalAchieved || 0) 
+          : 0;
+        
+        // Query WorkEntry to sum current stage's consumed quantities (achieved + rejected, all days)
+        const currentStageConsumed = await WorkEntry.aggregate([
+          {
+            $match: {
+              productId: new Types.ObjectId(productId),
+              processId: new Types.ObjectId(processId),
+              factoryId: stageInfo.product.factoryId,
+              // Include all days - no date filter
+            }
+          },
+          {
+            $group: {
+              _id: null,
+              totalConsumed: {
+                $sum: {
+                  $add: ['$achieved', '$rejected']
+                }
+              }
+            }
+          }
+        ]);
+        
+        const currentTotalConsumed = currentStageConsumed.length > 0 
+          ? (currentStageConsumed[0].totalConsumed || 0) 
+          : 0;
+        
+        // Calculate available quantity: Previous achieved - Current consumed
+        availableQuantity = previousTotalAchieved - currentTotalConsumed;
+        
+        // Also get today's breakdown for logging
+        const todayPreviousAchieved = await WorkEntry.aggregate([
+          {
+            $match: {
+              productId: new Types.ObjectId(productId),
+              processId: new Types.ObjectId(previousProcessId),
+              factoryId: stageInfo.product.factoryId,
+              createdAt: {
+                $gte: today,
+                $lt: new Date(today.getTime() + 24 * 60 * 60 * 1000) // Tomorrow
+              }
+            }
+          },
+          {
+            $group: {
+              _id: null,
+              todayAchieved: { $sum: '$achieved' }
+            }
+          }
+        ]);
+        
+        const todayPreviousAchievedTotal = todayPreviousAchieved.length > 0 
+          ? (todayPreviousAchieved[0].todayAchieved || 0) 
+          : 0;
+        
+        const todayCurrentConsumed = await WorkEntry.aggregate([
+          {
+            $match: {
+              productId: new Types.ObjectId(productId),
+              processId: new Types.ObjectId(processId),
+              factoryId: stageInfo.product.factoryId,
+              createdAt: {
+                $gte: today,
+                $lt: new Date(today.getTime() + 24 * 60 * 60 * 1000) // Tomorrow
+              }
+            }
+          },
+          {
+            $group: {
+              _id: null,
+              todayConsumed: {
+                $sum: {
+                  $add: ['$achieved', '$rejected']
+                }
+              }
+            }
+          }
+        ]);
+        
+        const todayCurrentConsumedTotal = todayCurrentConsumed.length > 0 
+          ? (todayCurrentConsumed[0].todayConsumed || 0) 
+          : 0;
+        
+        console.log('🔍 Available quantity calculation (WorkEntry-based):', {
+          previousProcessId: previousProcessId.toString(),
+          previousProcessOrder,
+          currentProcessId: processId,
+          currentProcessOrder,
+          previousTotalAchieved: {
+            allDays: previousTotalAchieved,
+            today: todayPreviousAchievedTotal
+          },
+          currentTotalConsumed: {
+            allDays: currentTotalConsumed,
+            today: todayCurrentConsumedTotal
+          },
+          availableQuantity,
+          calculation: `${previousTotalAchieved} - ${currentTotalConsumed} = ${availableQuantity}`,
+          // Also show ProcessStage values for comparison
+          processStageAvailable: currentStage?.availableQuantity || 0,
+          processStageCumulative: await this.calculateCumulativeAvailableQuantity(
+            stageInfo.product.factoryId,
+            new Types.ObjectId(productId),
+            new Types.ObjectId(processId),
+            today
+          ).catch(() => 0)
+        });
+      }
     }
     
     // Dynamically check and update locking status based on cumulative available quantity
