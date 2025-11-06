@@ -1630,6 +1630,20 @@ export const validateWorkEntry = async (req: AuthRequest, res: Response): Promis
       data: populatedWorkEntry
     };
 
+    // Broadcast WebSocket event for work entry validation
+    if (req.user?.factoryId) {
+      wsServer.broadcastToFactory(req.user.factoryId.toString(), {
+        type: 'work_entry_validated',
+        data: { 
+          workEntryId: workEntry._id.toString(), 
+          validationStatus: status,
+          workEntry: populatedWorkEntry
+        }
+      });
+      // Also broadcast production data update since validation affects production stats
+      wsServer.broadcastProductionUpdate(req.user.factoryId.toString());
+    }
+
     res.status(200).json(response);
   } catch (error: any) {
     logError('Validate work entry error', error);
