@@ -294,6 +294,19 @@ export const startWork = async (req: AuthRequest, res: Response): Promise<void> 
     return;
   }
   try {
+    const dbName = mongoose.connection.name;
+    const dbHost = mongoose.connection.host;
+    
+    logger.info('📥 Start work entry endpoint called', {
+      body: req.body,
+      userId: req.user?.id,
+      userRole: req.user?.role,
+      endpoint: '/work-entries/start',
+      databaseName: dbName,
+      databaseHost: dbHost,
+      timestamp: new Date().toISOString()
+    });
+    
     logger.debug('Start work request received', {
       body: req.body,
       userId: req.user?.id,
@@ -578,7 +591,7 @@ export const startWork = async (req: AuthRequest, res: Response): Promise<void> 
     
     // Convert string IDs to ObjectIds if needed
     
-    const workEntry = new WorkEntry({
+    const workEntryData = {
       employeeId: verifiedEmployeeId,
       processId,
       productId,
@@ -594,19 +607,207 @@ export const startWork = async (req: AuthRequest, res: Response): Promise<void> 
       factoryId: employee.factoryId,
       attendanceId: currentAttendance._id,
       validationStatus: 'pending'
+    };
+    
+    logger.info('📝 Creating work entry document', {
+      workEntryData: {
+        ...workEntryData,
+        employeeId: workEntryData.employeeId.toString(),
+        factoryId: workEntryData.factoryId.toString(),
+        attendanceId: workEntryData.attendanceId.toString(),
+        processId: workEntryData.processId.toString(),
+        productId: workEntryData.productId.toString()
+      }
     });
+    
+    const workEntry = new WorkEntry(workEntryData);
 
-    await workEntry.save();
+    // Save work entry with proper error handling
+    let savedWorkEntry;
+    try {
+      const dbName = mongoose.connection.name;
+      logger.debug('💾 Attempting to save work entry to database...', {
+        databaseName: dbName,
+        databaseHost: mongoose.connection.host
+      });
+      savedWorkEntry = await workEntry.save();
+      logger.info('✅ Work entry saved successfully to database', {
+        workEntryId: savedWorkEntry._id.toString(),
+        employeeId: savedWorkEntry.employeeId.toString(),
+        processId: savedWorkEntry.processId.toString(),
+        productId: savedWorkEntry.productId.toString(),
+        targetQuantity: savedWorkEntry.targetQuantity,
+        databaseName: dbName,
+        databaseHost: mongoose.connection.host,
+        savedAt: new Date().toISOString()
+      });
+    } catch (saveError: any) {
+      logger.error('❌ Work entry save failed', {
+        errorName: saveError.name,
+        errorMessage: saveError.message,
+        errorStack: saveError.stack,
+        workEntryData: {
+          employeeId: verifiedEmployeeId.toString(),
+          factoryId: employee.factoryId.toString(),
+          attendanceId: currentAttendance._id.toString(),
+          processId: processId.toString(),
+          productId: productId.toString(),
+          targetQuantity: numericTargetQuantity,
+          machineId: req.body.machineId || null,
+          shiftType: req.body.shiftType || null
+        },
+        databaseName: mongoose.connection.name,
+        databaseHost: mongoose.connection.host,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Handle validation errors
+      if (saveError.name === 'ValidationError') {
+        logger.error('❌ Work entry validation error details', {
+          validationErrors: saveError.errors,
+          errorPaths: Object.keys(saveError.errors || {}),
+          fullError: saveError
+        });
+        logError('Work entry validation error', saveError, {
+          validationErrors: saveError.errors,
+          workEntryData: {
+            employeeId: verifiedEmployeeId.toString(),
+            processId: processId.toString(),
+            productId: productId.toString(),
+            targetQuantity: numericTargetQuantity
+          }
+        });
+        const response: ApiResponse = {
+          success: false,
+          error: 'Validation failed',
+          status: 400,
+          data: { errors: saveError.errors }
+        };
+        res.status(400).json(response);
+        return;
+      }
+      
+      // Handle cast errors
+      if (saveError.name === 'CastError') {
+        logger.error('❌ Work entry cast error details', {
+          path: saveError.path,
+          value: saveError.value,
+          kind: saveError.kind,
+          fullError: saveError
+        });
+        logError('Work entry cast error', saveError, {
+          path: saveError.path,
+          value: saveError.value,
+          kind: saveError.kind
+        });
+        const response: ApiResponse = {
+          success: false,
+          error: `Invalid ${saveError.path}: ${saveError.value}`,
+          status: 400
+        };
+        res.status(400).json(response);
+        return;
+      }
+      
+      // Handle duplicate key errors
+      if (saveError.code === 11000) {
+        logger.error('❌ Work entry duplicate key error', {
+          duplicateFields: saveError.keyPattern,
+          duplicateValues: saveError.keyValue,
+          fullError: saveError
+        });
+        logError('Work entry duplicate key error', saveError, {
+          duplicateFields: saveError.keyPattern,
+          duplicateValues: saveError.keyValue
+        });
+        const response: ApiResponse = {
+          success: false,
+          error: 'Duplicate work entry',
+          status: 409,
+          data: { duplicateFields: saveError.keyPattern }
+        };
+        res.status(409).json(response);
+        return;
+      }
+      
+      // Handle other errors
+      logger.error('❌ Work entry save failed with unknown error', {
+        errorName: saveError.name,
+        errorMessage: saveError.message,
+        errorCode: saveError.code,
+        errorStack: saveError.stack
+      });
+      logError('Work entry save failed', saveError, {
+        workEntryData: {
+          employeeId: verifiedEmployeeId.toString(),
+          processId: processId.toString(),
+          productId: productId.toString()
+        }
+      });
+      const response: ApiResponse = {
+        success: false,
+        error: `Failed to save work entry: ${saveError.message}`,
+        status: 500
+      };
+      res.status(500).json(response);
+      return;
+    }
+    
+    // Verify work entry was saved by querying database
+    try {
+      const verifiedWorkEntry = await WorkEntry.findById(savedWorkEntry._id);
+      if (!verifiedWorkEntry) {
+        logger.error('❌ Work entry not found after save', {
+          workEntryId: savedWorkEntry._id.toString(),
+          databaseName: mongoose.connection.name,
+          databaseHost: mongoose.connection.host
+        });
+        const response: ApiResponse = {
+          success: false,
+          error: 'Work entry was not saved to database',
+          status: 500
+        };
+        res.status(500).json(response);
+        return;
+      }
+      logger.debug('✅ Work entry verified in database', {
+        workEntryId: verifiedWorkEntry._id.toString(),
+        databaseName: mongoose.connection.name,
+        databaseHost: mongoose.connection.host
+      });
+    } catch (verifyError: any) {
+      logger.error('❌ Failed to verify work entry save', {
+        error: verifyError.message,
+        workEntryId: savedWorkEntry._id.toString(),
+        databaseName: mongoose.connection.name,
+        databaseHost: mongoose.connection.host
+      });
+      logError('Failed to verify work entry save', verifyError, {
+        workEntryId: savedWorkEntry._id.toString()
+      });
+      // Continue anyway - save might have succeeded but query failed
+    }
     
     // Invalidate dashboard cache
-    if (workEntry.factoryId) {
-      dashboardService.invalidateCache(workEntry.factoryId);
+    if (savedWorkEntry.factoryId) {
+      dashboardService.invalidateCache(savedWorkEntry.factoryId);
     }
 
-    const populatedWorkEntry = await WorkEntry.findById(workEntry._id)
+    const populatedWorkEntry = await WorkEntry.findById(savedWorkEntry._id)
       .populate('employeeId', 'profile.firstName profile.lastName email')
       .populate('processId', 'name')
       .populate('factoryId', 'name');
+
+    logger.info('🎉 Start work entry created and verified successfully', {
+      workEntryId: savedWorkEntry._id.toString(),
+      employeeId: savedWorkEntry.employeeId.toString(),
+      processId: savedWorkEntry.processId.toString(),
+      productId: savedWorkEntry.productId.toString(),
+      targetQuantity: savedWorkEntry.targetQuantity,
+      databaseName: mongoose.connection.name,
+      databaseHost: mongoose.connection.host,
+      timestamp: new Date().toISOString()
+    });
 
     const response: ApiResponse = {
       success: true,
@@ -620,9 +821,27 @@ export const startWork = async (req: AuthRequest, res: Response): Promise<void> 
       wsServer.broadcastProductionUpdate(req.user.factoryId.toString());
     }
 
+    logger.debug('📤 Sending success response to client', {
+      workEntryId: savedWorkEntry._id.toString(),
+      statusCode: 201
+    });
+    
     res.status(201).json(response);
   } catch (error: any) {
+    logger.error('❌ Start work entry error occurred', {
+      error: error.message,
+      errorName: error.name,
+      errorStack: error.stack,
+      requestBody: req.body,
+      userId: req.user?.id,
+      databaseName: mongoose.connection.name,
+      databaseHost: mongoose.connection.host,
+      timestamp: new Date().toISOString()
+    });
+    
     logError('Create work entry error', error, {
+      requestBody: req.body,
+      userId: req.user?.id
     });
     
     // Check if it's a validation error
