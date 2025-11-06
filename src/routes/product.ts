@@ -11,8 +11,8 @@ const router = Router();
 
 // Validation middleware
 const validateProduct = [
-  body('name').isLength({ min: 2 }).withMessage('Product name must be at least 2 characters'),
-  body('code').isLength({ min: 1 }).withMessage('Product code is required'),
+  body('name').optional().isLength({ min: 2 }).withMessage('Product name must be at least 2 characters'),
+  body('code').optional().isLength({ min: 1 }).withMessage('Product code must be at least 1 character'),
   body('dailyTarget').optional().isNumeric().withMessage('Daily target must be a number'),
   body('processes').optional().isArray().withMessage('Processes must be an array'),
   body('processes.*.processId').optional().isMongoId().withMessage('Process ID must be valid'),
@@ -232,7 +232,7 @@ router.put('/:id', authenticate, authorize('super_admin', 'factory_admin'), vali
       return res.status(403).json(response);
     }
 
-    const { name, description, category, sku, price, inventory, specifications, dailyTarget, processes } = req.body;
+    const { name, description, category, sku, price, inventory, specifications, dailyTarget, processes, code } = req.body;
 
     // Check if SKU already exists (excluding current product)
     if (sku && sku !== (product as any).sku) {
@@ -252,25 +252,48 @@ router.put('/:id', authenticate, authorize('super_admin', 'factory_admin'), vali
       }
     }
 
+    // Build update object with only provided fields
+    const updateData: any = {};
+    
+    if (name !== undefined) updateData.name = name;
+    if (code !== undefined) updateData.code = code;
+    if (description !== undefined) updateData.description = description;
+    if (category !== undefined) updateData.category = category;
+    if (sku !== undefined) updateData.sku = sku;
+    if (price !== undefined) updateData.price = price;
+    if (dailyTarget !== undefined) updateData.dailyTarget = dailyTarget;
+    if (processes !== undefined) updateData.processes = processes;
+    if (specifications !== undefined) updateData.specifications = specifications || {};
+    
+    // Only update inventory if provided
+    if (inventory !== undefined && inventory !== null) {
+      if (inventory.currentStock !== undefined) {
+        updateData.inventory = {
+          currentStock: inventory.currentStock,
+          maxStock: inventory.maxStock !== undefined ? inventory.maxStock : (inventory.currentStock * 2),
+          minStock: inventory.minStock !== undefined ? inventory.minStock : Math.floor(inventory.currentStock * 0.2),
+          unit: inventory.unit || (product as any).inventory?.unit || 'units'
+        };
+      } else {
+        // Preserve existing inventory values if only partial update
+        updateData.inventory = {
+          ...(product as any).inventory,
+          ...(inventory.maxStock !== undefined && { maxStock: inventory.maxStock }),
+          ...(inventory.minStock !== undefined && { minStock: inventory.minStock }),
+          ...(inventory.unit !== undefined && { unit: inventory.unit })
+        };
+      }
+    }
+    
+    // Handle factoryId for super_admin
+    if (req.user.role === 'super_admin' && req.body.factoryId !== undefined) {
+      updateData.factoryId = req.body.factoryId;
+    }
+
     // Update product
     const updatedProduct = await Product.findByIdAndUpdate(
       req.params.id,
-      {
-        name,
-        description,
-        category,
-        sku,
-        price,
-        inventory: {
-          currentStock: inventory.currentStock,
-          maxStock: inventory.maxStock || inventory.currentStock * 2,
-          minStock: inventory.minStock || Math.floor(inventory.currentStock * 0.2)
-        },
-        specifications: specifications || {},
-        dailyTarget: dailyTarget !== undefined ? dailyTarget : product.dailyTarget,
-        processes: processes !== undefined ? processes : product.processes,
-        factoryId: req.user.role === 'super_admin' ? req.body.factoryId : product.factoryId
-      },
+      updateData,
       { new: true, runValidators: true }
     );
 
