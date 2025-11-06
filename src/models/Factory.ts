@@ -1,7 +1,12 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
 import { IFactory, IAddress, IGeofence, ISubscription, IShift, IFactorySettings, IFactoryMetadata } from '@/types';
 
-export interface FactoryDocument extends IFactory {}
+export interface FactoryDocument extends IFactory {
+  calculateDistance(latitude: number, longitude: number): number;
+  isWithinGeofence(latitude: number, longitude: number): boolean;
+  isSubscriptionActive(): boolean;
+  canAddUser(currentUserCount: number): boolean;
+}
 
 export interface FactoryModel extends Model<FactoryDocument> {
   findActive(): Promise<FactoryDocument[]>;

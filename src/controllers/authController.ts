@@ -283,7 +283,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     const response: ApiResponse<LoginResponse> = {
       success: true,
       data: {
-        user: user.toJSON(),
+        user: user.toJSON() as any,
         accessToken
         // refreshToken removed from response for security
       },

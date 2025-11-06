@@ -66,7 +66,7 @@ export const getProcessStagesByProduct = async (req: AuthRequest, res: Response)
       return;
     }
 
-    const { product_id } = req.query;
+    const { product_id } = (req as any).query;
 
     if (!product_id || typeof product_id !== 'string') {
       const response: ApiResponse = {
@@ -102,6 +102,17 @@ export const getProcessStagesByProduct = async (req: AuthRequest, res: Response)
     }
 
     // Sort processes by order and populate process details
+    if (!product.processes || product.processes.length === 0) {
+      const response: ApiResponse = {
+        success: true,
+        message: 'No process stages found',
+        status: 200,
+        data: { stages: [] }
+      };
+      res.status(200).json(response);
+      return;
+    }
+    
     const stages = product.processes
       .sort((a, b) => a.order - b.order)
       .map((p: any) => {
@@ -126,7 +137,7 @@ export const getProcessStagesByProduct = async (req: AuthRequest, res: Response)
   } catch (error: any) {
     logError('Get process stages error', error, {
       userId: req.user?.id,
-      productId: req.query.product_id
+      productId: (req as any).query.product_id
     });
 
     const response: ApiResponse = {
@@ -197,6 +208,16 @@ export const getProcessStatus = async (req: AuthRequest, res: Response): Promise
     }
 
     // Find the stage order for the given process
+    if (!product.processes || product.processes.length === 0) {
+      const response: ApiResponse = {
+        success: false,
+        error: 'No process stages found for this product',
+        status: 404
+      };
+      res.status(404).json(response);
+      return;
+    }
+    
     const processStage = product.processes.find(
       (p: any) => p.processId.toString() === stage_id
     );
@@ -231,7 +252,7 @@ export const getProcessStatus = async (req: AuthRequest, res: Response): Promise
 
     // Stage 2+: Calculate available quantity
     const previousStageOrder = stageOrder - 1;
-    const previousProcess = product.processes.find(
+    const previousProcess = product.processes?.find(
       (p: any) => p.order === previousStageOrder
     );
 
@@ -321,8 +342,8 @@ export const getProcessStatus = async (req: AuthRequest, res: Response): Promise
   } catch (error: any) {
     logError('Get process status error', error, {
       userId: req.user?.id,
-      productId: req.query.product_id,
-      stageId: req.query.stage_id
+      productId: (req as any).query.product_id,
+      stageId: (req as any).query.stage_id
     });
 
     const response: ApiResponse = {
@@ -356,7 +377,7 @@ export const submitProduction = async (req: AuthRequest, res: Response): Promise
       achieved,
       rejected,
       photo
-    } = req.body;
+    } = (req as any).body;
 
     // Validation
     if (!checkinTime || !productId || !processId || !achieved || !photo) {
@@ -428,6 +449,16 @@ export const submitProduction = async (req: AuthRequest, res: Response): Promise
     }
 
     // Find stage order
+    if (!product.processes || product.processes.length === 0) {
+      const response: ApiResponse = {
+        success: false,
+        error: 'No process stages found for this product',
+        status: 404
+      };
+      res.status(404).json(response);
+      return;
+    }
+    
     const processStage = product.processes.find(
       (p: any) => p.processId.toString() === processId
     );

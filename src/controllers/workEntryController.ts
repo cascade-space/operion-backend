@@ -614,7 +614,7 @@ export const startWork = async (req: AuthRequest, res: Response): Promise<void> 
       workEntryData: {
         ...workEntryData,
         employeeId: workEntryData.employeeId.toString(),
-        factoryId: workEntryData.factoryId.toString(),
+        factoryId: workEntryData.factoryId?.toString() || '',
         attendanceId: workEntryData.attendanceId.toString(),
         processId: workEntryData.processId.toString(),
         productId: workEntryData.productId.toString()
@@ -649,7 +649,7 @@ export const startWork = async (req: AuthRequest, res: Response): Promise<void> 
         errorStack: saveError.stack,
         workEntryData: {
           employeeId: verifiedEmployeeId.toString(),
-          factoryId: employee.factoryId.toString(),
+          factoryId: employee.factoryId?.toString() || '',
           attendanceId: currentAttendance._id.toString(),
           processId: processId.toString(),
           productId: productId.toString(),
@@ -1225,7 +1225,7 @@ export const directWorkEntry = async (req: AuthRequest, res: Response): Promise<
       workEntryData: {
         ...workEntryData,
         employeeId: workEntryData.employeeId.toString(),
-        factoryId: workEntryData.factoryId.toString(),
+        factoryId: workEntryData.factoryId?.toString() || '',
         attendanceId: workEntryData.attendanceId.toString(),
         processId: workEntryData.processId.toString(),
         productId: workEntryData.productId.toString()
@@ -1261,7 +1261,7 @@ export const directWorkEntry = async (req: AuthRequest, res: Response): Promise<
         errorStack: saveError.stack,
         workEntryData: {
           employeeId: verifiedEmployeeId.toString(),
-          factoryId: employee.factoryId.toString(),
+          factoryId: employee.factoryId?.toString() || '',
           attendanceId: currentAttendance._id.toString(),
           processId: processId.toString(),
           productId: productId.toString(),

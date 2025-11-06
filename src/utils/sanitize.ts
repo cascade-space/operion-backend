@@ -1,7 +1,15 @@
 import createDOMPurify from 'isomorphic-dompurify';
 
-// Create DOMPurify instance
-const DOMPurify = createDOMPurify();
+// Create DOMPurify instance - handle both default and namespace exports
+let DOMPurify: any;
+try {
+  DOMPurify = typeof createDOMPurify === 'function' 
+    ? createDOMPurify() 
+    : (createDOMPurify as any).default || createDOMPurify;
+} catch {
+  // Fallback if import fails
+  DOMPurify = createDOMPurify;
+}
 
 /**
  * Sanitize HTML string to prevent XSS attacks
@@ -79,7 +87,7 @@ export function sanitizeObject<T extends Record<string, any>>(
       }
     } else {
       if (sanitized[field] && typeof sanitized[field] === 'string') {
-        sanitized[field] = sanitizeText(sanitized[field]);
+        (sanitized as any)[field] = sanitizeText(sanitized[field]);
       }
     }
   }

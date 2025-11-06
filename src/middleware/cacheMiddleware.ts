@@ -86,7 +86,7 @@ class ResponseCache {
     // Try Redis first if available
     if (redisService.getConnectionStatus()) {
       try {
-        await redisService.set(key, JSON.stringify(data), ttl / 1000); // Redis TTL in seconds
+        await redisService.setex(key, Math.floor(ttl / 1000), JSON.stringify(data)); // Redis TTL in seconds
         return;
       } catch (error) {
         logger.debug('Redis cache set failed, falling back to memory', {

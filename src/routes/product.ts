@@ -308,7 +308,7 @@ router.put('/:id', authenticate, authorize('super_admin', 'factory_admin'), vali
     };
 
     // Broadcast WebSocket event for product update
-    if (product.factoryId) {
+    if (product.factoryId && updatedProduct) {
       wsServer.broadcastToFactory(product.factoryId.toString(), {
         type: 'product_updated',
         data: { productId: updatedProduct._id.toString(), product: updatedProduct }
