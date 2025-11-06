@@ -162,7 +162,7 @@ app.use((req, res, next) => {
       res.header('Access-Control-Allow-Origin', origin);
       res.header('Access-Control-Allow-Credentials', 'true');
       res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-      res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, Access-Control-Request-Method, Access-Control-Request-Headers');
+      res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, Access-Control-Request-Method, Access-Control-Request-Headers, x-xsrf-token, x-csrf-token, xsrf-token, csrf-token, X-XSRF-TOKEN, X-CSRF-TOKEN');
       res.header('Access-Control-Max-Age', '86400'); // 24 hours
       res.status(200).end();
       return; // Stop here, don't continue to other middleware
@@ -333,6 +333,12 @@ const corsOptions = {
   optionsSuccessStatus: 200,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: [
+    'x-xsrf-token',
+    'x-csrf-token',
+    'xsrf-token',
+    'csrf-token',
+    'X-XSRF-TOKEN',
+    'X-CSRF-TOKEN',
     'Content-Type', 
     'Authorization', 
     'X-Requested-With',
