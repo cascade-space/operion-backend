@@ -784,7 +784,42 @@ export const checkOut = async (req: AuthRequest, res: Response): Promise<void> =
       return;
     }
 
-    const employeeId = req.user.id;
+    // Extract employeeId with fallback (same pattern as checkIn)
+    let employeeId = req.user.id || (req.user as any)._id;
+    
+    // Validate employeeId is present
+    if (!employeeId) {
+      logError('Check-out error: employeeId not found', new Error('EmployeeId not found'), {
+        hasUser: !!req.user,
+        userId: req.user?.id,
+        user_id: (req.user as any)?._id
+      });
+      const response: ApiResponse = {
+        success: false,
+        error: 'Employee ID is required',
+        status: 400
+      };
+      res.status(400).json(response);
+      return;
+    }
+    
+    // Convert to ObjectId if it's a string
+    if (typeof employeeId === 'string') {
+      if (!mongoose.Types.ObjectId.isValid(employeeId)) {
+        logError('Check-out error: Invalid employeeId format', new Error('Invalid employeeId format'), {
+          employeeId,
+          employeeIdType: typeof employeeId
+        });
+        const response: ApiResponse = {
+          success: false,
+          error: 'Invalid employee ID format',
+          status: 400
+        };
+        res.status(400).json(response);
+        return;
+      }
+      employeeId = new mongoose.Types.ObjectId(employeeId);
+    }
 
     // Find attendance record - be more flexible: find by ID first, then validate ownership
     // Remove strict status requirement to allow check-out even if status changed
@@ -831,16 +866,20 @@ export const checkOut = async (req: AuthRequest, res: Response): Promise<void> =
 
     // Validate ownership - ensure this attendance belongs to the requesting employee
     // Handle both ObjectId and string types safely
-    const attendanceEmployeeId = attendance.employeeId?.toString() || String(attendance.employeeId);
-    const requestingEmployeeIdStr = employeeId?.toString() || String(employeeId);
+    // Convert both to strings for reliable comparison
+    const attendanceEmployeeIdStr = attendance.employeeId?.toString() || 
+                                     (attendance.employeeId ? String(attendance.employeeId) : '');
+    const requestingEmployeeIdStr = employeeId?.toString() || 
+                                     (employeeId ? String(employeeId) : '');
     
-    if (attendanceEmployeeId !== requestingEmployeeIdStr) {
+    if (!attendanceEmployeeIdStr || !requestingEmployeeIdStr || attendanceEmployeeIdStr !== requestingEmployeeIdStr) {
       logger.warn('Check-out error: Attendance access denied', { 
         attendanceId: attendance._id, 
-        attendanceEmployeeId: attendanceEmployeeId,
+        attendanceEmployeeId: attendanceEmployeeIdStr,
         requestingEmployeeId: requestingEmployeeIdStr,
         attendanceEmployeeIdType: typeof attendance.employeeId,
-        employeeIdType: typeof employeeId
+        employeeIdType: typeof employeeId,
+        employeeIdValue: employeeId
       });
       const response: ApiResponse = {
         success: false,
