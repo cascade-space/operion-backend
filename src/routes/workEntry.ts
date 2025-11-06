@@ -56,8 +56,11 @@ router.get('/active', authenticate, getActiveWorkEntry);
 router.get('/', authenticate, getAllWorkEntries);
 router.get('/:id', authenticate, validateMongoId, getWorkEntryById);
 
+// @deprecated Use /api/production/checkin and /api/production/submit instead
 router.post('/start', authenticate, startWork);
+// @deprecated Use /api/production/submit instead
 router.post('/direct', authenticate, authorize('employee'), directWorkEntry);
+// @deprecated Use /api/production/submit instead
 router.post('/complete/:id', authenticate, authorize('employee'), validateMongoId, sanitizeWorkEntryInput, validateCompleteWork, completeWork);
 router.delete('/:id', authenticate, authorize('employee'), validateMongoId, deleteWorkEntry);
 

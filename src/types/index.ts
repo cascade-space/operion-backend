@@ -305,6 +305,10 @@ export interface IWorkEntry extends BaseDocument {
   targetQuantity: number;
   startTime: Date;
   endTime?: Date;
+  checkinTime?: Date;
+  checkoutTime?: Date;
+  workHours?: number;
+  stageOrder?: number;
   location?: ILocation;
 }
 

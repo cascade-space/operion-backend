@@ -103,6 +103,24 @@ const workEntrySchema = new Schema<WorkEntryDocument>({
     type: Date,
     required: false
   },
+  checkinTime: {
+    type: Date,
+    required: false
+  },
+  checkoutTime: {
+    type: Date,
+    required: false
+  },
+  workHours: {
+    type: Number,
+    required: false,
+    min: 0
+  },
+  stageOrder: {
+    type: Number,
+    required: false,
+    min: 1
+  },
   location: {
     latitude: {
       type: Number,
@@ -127,6 +145,9 @@ workEntrySchema.index({ factoryId: 1, productId: 1, processId: 1, createdAt: -1 
 workEntrySchema.index({ factoryId: 1, validationStatus: 1, createdAt: -1 });
 workEntrySchema.index({ validationStatus: 1 });
 workEntrySchema.index({ attendanceId: 1 });
+// Indexes for process status calculation
+workEntrySchema.index({ productId: 1, stageOrder: 1 });
+workEntrySchema.index({ productId: 1, stageOrder: 1, createdAt: -1 });
 
 // Virtual for total production
 workEntrySchema.virtual('totalProduction').get(function(this: WorkEntryDocument): number {

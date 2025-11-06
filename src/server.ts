@@ -42,6 +42,7 @@ import workEntryRoutes from '@/routes/workEntry';
 import dashboardRoutes from '@/routes/dashboard';
 import reportsRoutes from '@/routes/reports';
 import processStageRoutes from '@/routes/processStage';
+import productionRoutes from '@/routes/production';
 
 const app = express();
 const server = createServer(app);
@@ -570,6 +571,7 @@ app.use(`${API_VERSION}/work-entries`, workEntryRoutes);
 app.use(`${API_VERSION}/dashboard`, dashboardRoutes);
 app.use(`${API_VERSION}/reports`, reportsRoutes);
 app.use(`${API_VERSION}/process-stages`, processStageRoutes);
+app.use(`${API_VERSION}/production`, productionRoutes);
 
 // Backward compatibility: Also mount routes at /api (will be deprecated)
 app.use('/api/auth', authRoutes);
@@ -583,6 +585,7 @@ app.use('/api/work-entries', workEntryRoutes);
 app.use('/api/dashboard', responseCache.middleware(30000), dashboardRoutes); // Cache for 30 seconds
 app.use('/api/reports', timeoutMiddleware(30000), reportsRoutes); // 30s timeout for reports
 app.use('/api/process-stages', processStageRoutes);
+app.use('/api/production', productionRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {

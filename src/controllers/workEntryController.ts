@@ -288,6 +288,7 @@ export const debugUser = async (req: AuthRequest, res: Response): Promise<void> 
 };
 
 // Start work (create work entry)
+// @deprecated Use /api/production/checkin and /api/production/submit instead. This endpoint is kept for backward compatibility.
 export const startWork = async (req: AuthRequest, res: Response): Promise<void> => {
   if (!req.user) {
     res.status(401).json({ success: false, error: 'Unauthorized', status: 401 });
@@ -883,6 +884,7 @@ export const startWork = async (req: AuthRequest, res: Response): Promise<void> 
 };
 
 // Direct work entry for first process stage (bypasses quantity validation)
+// @deprecated Use /api/production/submit instead. This endpoint is kept for backward compatibility.
 export const directWorkEntry = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const dbName = mongoose.connection.name;
@@ -1491,6 +1493,7 @@ export const directWorkEntry = async (req: AuthRequest, res: Response): Promise<
 };
 
 // Complete work (update work entry with final data)
+// @deprecated Use /api/production/submit instead. This endpoint is kept for backward compatibility.
 export const completeWork = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const errors = validationResult(req);
