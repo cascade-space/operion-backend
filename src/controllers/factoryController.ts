@@ -734,9 +734,30 @@ export const getFactoryById = async (req: Request, res: Response): Promise<void>
 // Update factory
 export const updateFactory = async (req: Request, res: Response): Promise<void> => {
   try {
+    const updateData: any = { ...req.body };
+
+    // Validate and log geofence updates if provided
+    if (updateData.geofence) {
+      logger.info('Updating factory geofence', {
+        factoryId: req.params.id,
+        geofence: updateData.geofence
+      });
+
+      // Ensure geofence data is properly formatted
+      if (updateData.geofence.latitude !== undefined) {
+        updateData.geofence.latitude = parseFloat(updateData.geofence.latitude);
+      }
+      if (updateData.geofence.longitude !== undefined) {
+        updateData.geofence.longitude = parseFloat(updateData.geofence.longitude);
+      }
+      if (updateData.geofence.radius !== undefined) {
+        updateData.geofence.radius = parseInt(updateData.geofence.radius);
+      }
+    }
+
     const factory = await Factory.findByIdAndUpdate(
       req.params.id,
-      req.body,
+      updateData,
       { new: true, runValidators: true }
     );
 
@@ -749,6 +770,11 @@ export const updateFactory = async (req: Request, res: Response): Promise<void> 
       res.status(404).json(response);
       return;
     }
+
+    logger.info('Factory updated successfully', {
+      factoryId: factory._id,
+      updatedFields: Object.keys(updateData)
+    });
 
     const response: ApiResponse = {
       success: true,

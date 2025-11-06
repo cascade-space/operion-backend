@@ -7,6 +7,7 @@ import { ApiResponse } from '@/types';
 import bcrypt from 'bcryptjs';
 import { authenticate, authorize } from '@/middleware/auth';
 import { validateMongoId } from '@/middleware/commonValidation';
+import { handleValidationErrors } from '@/middleware/validation';
 import {
   registerFactory,
   getFactoryRequests,
@@ -67,10 +68,17 @@ router.get('/requests', authenticate, authorize('super_admin'), getFactoryReques
 router.post('/requests/:requestId/approve', authenticate, authorize('super_admin'), approveFactoryRequest);
 router.post('/requests/:requestId/reject', authenticate, authorize('super_admin'), rejectFactoryRequest);
 router.post('/', authenticate, authorize('super_admin'), createFactory);
+// Validation middleware for geofence updates
+const validateGeofenceUpdate = [
+  body('geofence.latitude').optional().isFloat({ min: -90, max: 90 }).withMessage('Invalid latitude'),
+  body('geofence.longitude').optional().isFloat({ min: -180, max: 180 }).withMessage('Invalid longitude'),
+  body('geofence.radius').optional().isInt({ min: 50, max: 1000 }).withMessage('Radius must be between 50-1000 meters'),
+];
+
 router.get('/', getAllFactories);
 router.get('/shifts', authenticate, getShifts);
 router.get('/:id', validateMongoId, getFactoryById);
-router.put('/:id', validateMongoId, updateFactory);
+router.put('/:id', authenticate, validateMongoId, validateGeofenceUpdate, handleValidationErrors, updateFactory);
 router.delete('/:id', validateMongoId, deleteFactory);
 router.patch('/:id/approve', validateMongoId, approveFactory);
 router.patch('/:id/suspend', validateMongoId, suspendFactory);
