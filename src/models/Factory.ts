@@ -221,10 +221,9 @@ factorySchema.methods.canAddUser = function(this: FactoryDocument, currentUserCo
   return this.isSubscriptionActive() && currentUserCount < this.subscription.maxUsers;
 };
 
-// Instance method to check if location is within geofence
-factorySchema.methods.isWithinGeofence = function(this: FactoryDocument, latitude: number, longitude: number): boolean {
-  if (!this.settings.geofencingEnabled) return true;
-  
+// Instance method to calculate distance from geofence center to given coordinates
+// Returns distance in meters using Haversine formula
+factorySchema.methods.calculateDistance = function(this: FactoryDocument, latitude: number, longitude: number): number {
   const R = 6371; // Earth's radius in kilometers
   const lat1 = this.geofence.latitude * Math.PI / 180;
   const lat2 = latitude * Math.PI / 180;
@@ -237,6 +236,14 @@ factorySchema.methods.isWithinGeofence = function(this: FactoryDocument, latitud
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   const distance = R * c * 1000; // Convert to meters
 
+  return distance;
+};
+
+// Instance method to check if location is within geofence
+factorySchema.methods.isWithinGeofence = function(this: FactoryDocument, latitude: number, longitude: number): boolean {
+  if (!this.settings.geofencingEnabled) return true;
+  
+  const distance = this.calculateDistance(latitude, longitude);
   return distance <= this.geofence.radius;
 };
 

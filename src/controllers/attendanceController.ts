@@ -619,14 +619,50 @@ export const checkIn = async (req: AuthRequest, res: Response): Promise<void> =>
     if (employee?.factoryId && (employee.factoryId as any).geofence) {
       const factory = employee.factoryId as any;
       if (factory.geofence && factory.settings?.geofencingEnabled !== false) {
+        // Calculate distance for logging
+        const distanceInMeters = factory.calculateDistance(location.latitude, location.longitude);
+        const distanceInKm = distanceInMeters / 1000;
         isWithinGeofence = factory.isWithinGeofence(location.latitude, location.longitude);
+        
+        // Detailed geofence validation logging
+        logger.info('Geofence validation', {
+          employeeId: employeeId.toString(),
+          factoryId: factory._id,
+          factoryName: factory.name,
+          geofence: {
+            latitude: factory.geofence.latitude,
+            longitude: factory.geofence.longitude,
+            radius: factory.geofence.radius
+          },
+          employeeLocation: {
+            latitude: location.latitude,
+            longitude: location.longitude
+          },
+          calculatedDistance: {
+            meters: Math.round(distanceInMeters * 100) / 100,
+            kilometers: Math.round(distanceInKm * 100) / 100
+          },
+          withinGeofence: isWithinGeofence,
+          geofencingEnabled: factory.settings?.geofencingEnabled !== false
+        });
         
         // Block check-in if outside geofence
         if (!isWithinGeofence) {
           logger.warn('Check-in blocked: Employee outside geofence', {
             employeeId: employeeId.toString(),
+            factoryId: factory._id,
+            factoryName: factory.name,
             location: { latitude: location.latitude, longitude: location.longitude },
-            factoryId: factory._id
+            geofence: {
+              latitude: factory.geofence.latitude,
+              longitude: factory.geofence.longitude,
+              radius: factory.geofence.radius
+            },
+            calculatedDistance: {
+              meters: Math.round(distanceInMeters * 100) / 100,
+              kilometers: Math.round(distanceInKm * 100) / 100
+            },
+            message: `Employee is ${Math.round(distanceInKm * 100) / 100} km (${Math.round(distanceInMeters * 100) / 100} m) away from factory. Geofence radius: ${factory.geofence.radius} m`
           });
           const response: ApiResponse = {
             success: false,
@@ -635,6 +671,15 @@ export const checkIn = async (req: AuthRequest, res: Response): Promise<void> =>
           };
           res.status(400).json(response);
           return;
+        } else {
+          logger.debug('Check-in geofence validation passed', {
+            employeeId: employeeId.toString(),
+            distance: {
+              meters: Math.round(distanceInMeters * 100) / 100,
+              kilometers: Math.round(distanceInKm * 100) / 100
+            },
+            radius: factory.geofence.radius
+          });
         }
       }
     }
