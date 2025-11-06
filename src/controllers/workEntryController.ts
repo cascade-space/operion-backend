@@ -666,6 +666,14 @@ export const startWork = async (req: AuthRequest, res: Response): Promise<void> 
 // Direct work entry for first process stage (bypasses quantity validation)
 export const directWorkEntry = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    logger.info('📥 Direct work entry endpoint called', {
+      body: req.body,
+      userId: req.user?.id,
+      userRole: req.user?.role,
+      endpoint: '/work-entries/direct',
+      timestamp: new Date().toISOString()
+    });
+    
     logger.debug('Direct work entry request received', {
       body: req.body,
       userId: req.user?.id,
@@ -967,7 +975,7 @@ export const directWorkEntry = async (req: AuthRequest, res: Response): Promise<
     }
 
     // Create work entry directly
-    const workEntry = new WorkEntry({
+    const workEntryData = {
       employeeId: verifiedEmployeeId,
       factoryId: employee.factoryId,
       attendanceId: currentAttendance._id,
@@ -985,20 +993,61 @@ export const directWorkEntry = async (req: AuthRequest, res: Response): Promise<
       validatedBy: verifiedEmployeeId,
       validatedAt: new Date(),
       location: location || { latitude: 0, longitude: 0 }
+    };
+    
+    logger.info('📝 Creating work entry document', {
+      workEntryData: {
+        ...workEntryData,
+        employeeId: workEntryData.employeeId.toString(),
+        factoryId: workEntryData.factoryId.toString(),
+        attendanceId: workEntryData.attendanceId.toString(),
+        processId: workEntryData.processId.toString(),
+        productId: workEntryData.productId.toString()
+      }
     });
+    
+    const workEntry = new WorkEntry(workEntryData);
 
     // Save work entry with proper error handling
     let savedWorkEntry;
     try {
+      logger.debug('💾 Attempting to save work entry to database...');
       savedWorkEntry = await workEntry.save();
-      logger.debug('Work entry saved successfully', {
+      logger.info('✅ Work entry saved successfully to database', {
         workEntryId: savedWorkEntry._id.toString(),
         employeeId: savedWorkEntry.employeeId.toString(),
-        processId: savedWorkEntry.processId.toString()
+        processId: savedWorkEntry.processId.toString(),
+        productId: savedWorkEntry.productId.toString(),
+        achieved: savedWorkEntry.achieved,
+        rejected: savedWorkEntry.rejected,
+        savedAt: new Date().toISOString()
       });
     } catch (saveError: any) {
+      logger.error('❌ Work entry save failed', {
+        errorName: saveError.name,
+        errorMessage: saveError.message,
+        errorStack: saveError.stack,
+        workEntryData: {
+          employeeId: verifiedEmployeeId.toString(),
+          factoryId: employee.factoryId.toString(),
+          attendanceId: currentAttendance._id.toString(),
+          processId: processId.toString(),
+          productId: productId.toString(),
+          achieved: numericAchieved,
+          rejected: numericRejected,
+          machineId: machineId || null,
+          shiftType: shiftType || 'General'
+        },
+        timestamp: new Date().toISOString()
+      });
+      
       // Handle validation errors
       if (saveError.name === 'ValidationError') {
+        logger.error('❌ Work entry validation error details', {
+          validationErrors: saveError.errors,
+          errorPaths: Object.keys(saveError.errors || {}),
+          fullError: saveError
+        });
         logError('Work entry validation error', saveError, {
           validationErrors: saveError.errors,
           workEntryData: {
@@ -1021,6 +1070,12 @@ export const directWorkEntry = async (req: AuthRequest, res: Response): Promise<
       
       // Handle cast errors
       if (saveError.name === 'CastError') {
+        logger.error('❌ Work entry cast error details', {
+          path: saveError.path,
+          value: saveError.value,
+          kind: saveError.kind,
+          fullError: saveError
+        });
         logError('Work entry cast error', saveError, {
           path: saveError.path,
           value: saveError.value,
@@ -1035,16 +1090,44 @@ export const directWorkEntry = async (req: AuthRequest, res: Response): Promise<
         return;
       }
       
+      // Handle duplicate key errors
+      if (saveError.code === 11000) {
+        logger.error('❌ Work entry duplicate key error', {
+          duplicateFields: saveError.keyPattern,
+          duplicateValues: saveError.keyValue,
+          fullError: saveError
+        });
+        const response: ApiResponse = {
+          success: false,
+          error: 'Duplicate work entry detected',
+          status: 400,
+          data: { duplicateFields: saveError.keyPattern }
+        };
+        res.status(400).json(response);
+        return;
+      }
+      
       // Re-throw other errors to be caught by outer catch
+      logger.error('❌ Unknown save error type, re-throwing', {
+        errorName: saveError.name,
+        errorCode: saveError.code,
+        errorMessage: saveError.message
+      });
       throw saveError;
     }
     
     // Verify work entry was saved by querying database
     try {
+      logger.debug('🔍 Verifying work entry exists in database...', {
+        workEntryId: savedWorkEntry._id.toString()
+      });
       const verifiedWorkEntry = await WorkEntry.findById(savedWorkEntry._id);
       if (!verifiedWorkEntry) {
-        logger.error('Work entry not found after save', {
-          workEntryId: savedWorkEntry._id.toString()
+        logger.error('❌ Work entry NOT FOUND in database after save', {
+          workEntryId: savedWorkEntry._id.toString(),
+          employeeId: savedWorkEntry.employeeId.toString(),
+          processId: savedWorkEntry.processId.toString(),
+          attemptedSaveTime: new Date().toISOString()
         });
         const response: ApiResponse = {
           success: false,
@@ -1054,10 +1137,20 @@ export const directWorkEntry = async (req: AuthRequest, res: Response): Promise<
         res.status(500).json(response);
         return;
       }
-      logger.debug('Work entry verified in database', {
-        workEntryId: verifiedWorkEntry._id.toString()
+      logger.info('✅ Work entry verified in database', {
+        workEntryId: verifiedWorkEntry._id.toString(),
+        employeeId: verifiedWorkEntry.employeeId.toString(),
+        processId: verifiedWorkEntry.processId.toString(),
+        achieved: verifiedWorkEntry.achieved,
+        rejected: verifiedWorkEntry.rejected,
+        verifiedAt: new Date().toISOString()
       });
     } catch (verifyError: any) {
+      logger.error('⚠️ Failed to verify work entry save (but save may have succeeded)', {
+        workEntryId: savedWorkEntry._id.toString(),
+        error: verifyError.message,
+        errorStack: verifyError.stack
+      });
       logError('Failed to verify work entry save', verifyError, {
         workEntryId: savedWorkEntry._id.toString()
       });
@@ -1105,12 +1198,14 @@ export const directWorkEntry = async (req: AuthRequest, res: Response): Promise<
     }
 
 
-    logger.info('Direct work entry created successfully', {
-      workEntryId: savedWorkEntry._id,
-      employeeId: savedWorkEntry.employeeId,
-      processId: savedWorkEntry.processId,
+    logger.info('🎉 Direct work entry created and verified successfully', {
+      workEntryId: savedWorkEntry._id.toString(),
+      employeeId: savedWorkEntry.employeeId.toString(),
+      processId: savedWorkEntry.processId.toString(),
+      productId: savedWorkEntry.productId.toString(),
       achieved: savedWorkEntry.achieved,
-      rejected: savedWorkEntry.rejected
+      rejected: savedWorkEntry.rejected,
+      completedAt: new Date().toISOString()
     });
 
     const response: ApiResponse = {
@@ -1122,19 +1217,45 @@ export const directWorkEntry = async (req: AuthRequest, res: Response): Promise<
 
     // Broadcast production data update via WebSocket
     if (req.user?.factoryId) {
+      logger.debug('📡 Broadcasting production update via WebSocket', {
+        factoryId: req.user.factoryId.toString()
+      });
       wsServer.broadcastProductionUpdate(req.user.factoryId.toString());
     }
+    
+    logger.info('📤 Sending success response to client', {
+      workEntryId: savedWorkEntry._id.toString(),
+      statusCode: 201
+    });
     
     res.status(201).json(response);
     
   } catch (error: any) {
-    logError('Direct work entry error', error);
+    logger.error('❌ Direct work entry error occurred', {
+      error: error.message,
+      errorName: error.name,
+      errorStack: error.stack,
+      requestBody: req.body,
+      userId: req.user?.id,
+      timestamp: new Date().toISOString()
+    });
+    
+    logError('Direct work entry error', error, {
+      requestBody: req.body,
+      userId: req.user?.id
+    });
     
     const response: ApiResponse = {
       success: false,
       error: `Failed to create work entry: ${error.message}`,
       status: 500
     };
+    
+    logger.error('📤 Sending error response to client', {
+      statusCode: 500,
+      errorMessage: error.message
+    });
+    
     res.status(500).json(response);
   }
 };
