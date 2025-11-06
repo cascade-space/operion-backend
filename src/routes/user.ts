@@ -9,6 +9,7 @@ import { authenticate, authorize } from '@/middleware/auth';
 import { validateMongoId } from '@/middleware/commonValidation';
 import { sanitizeUserInput } from '@/middleware/sanitization';
 import { auditUserCreation, auditUserDeletion, auditPasswordChange } from '@/middleware/auditLogger';
+import { handleValidationErrors } from '@/middleware/validation';
 import mongoose from 'mongoose';
 import { generateUserId, generatePassword, generateEmailFromId } from '@/utils/userUtils';
 import { validatePasswordForNewUsers } from '@/utils/passwordPolicy';
@@ -32,6 +33,7 @@ const validateUser = [
       return true;
     }),
   body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+  handleValidationErrors
 ];
 
 // Validation middleware for user updates (password optional)
@@ -54,6 +56,7 @@ const validateUserUpdate = [
       return true;
     }),
   body('password').optional().isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+  handleValidationErrors
 ];
 
 const validatePassword = [
