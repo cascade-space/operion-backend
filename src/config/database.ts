@@ -8,6 +8,27 @@ const MONGODB_URI = process.env['NODE_ENV'] === 'production'
   ? process.env['MONGODB_URI_PROD'] 
   : process.env['MONGODB_URI'];
 
+// Helper to extract database name from connection string
+const extractDatabaseName = (uri: string): string | null => {
+  try {
+    // Match mongodb:// or mongodb+srv://
+    const protocol = uri.startsWith('mongodb+srv://') ? 'mongodb+srv://' : 'mongodb://';
+    const afterProtocol = uri.substring(protocol.length);
+    
+    // Find the database name (after the last / and before ?)
+    const slashIndex = afterProtocol.indexOf('/');
+    if (slashIndex === -1) return null;
+    
+    const afterSlash = afterProtocol.substring(slashIndex + 1);
+    const questionIndex = afterSlash.indexOf('?');
+    const dbName = questionIndex > 0 ? afterSlash.substring(0, questionIndex) : afterSlash;
+    
+    return dbName || null;
+  } catch {
+    return null;
+  }
+};
+
 // Helper to mask sensitive parts of connection string for logging
 const maskConnectionString = (uri: string): string => {
   try {
@@ -58,8 +79,15 @@ export const connectDB = async (): Promise<void> => {
 
     // Log connection attempt with masked URI
     const maskedUri = maskConnectionString(MONGODB_URI);
+    const dbNameFromUri = extractDatabaseName(MONGODB_URI);
     const isSRV = MONGODB_URI.startsWith('mongodb+srv://');
+    
     logger.info(`Connecting to MongoDB: ${maskedUri}`);
+    if (dbNameFromUri) {
+      logger.info(`📊 Database name from URI: "${dbNameFromUri}"`);
+    } else {
+      logger.warn('⚠️  Could not extract database name from URI - will use default database');
+    }
     if (isSRV) {
       logger.info('Using SRV connection format (requires DNS resolution)');
     }
@@ -81,6 +109,12 @@ export const connectDB = async (): Promise<void> => {
     } as mongoose.ConnectOptions);
 
     logger.info(`MongoDB Connected: ${conn.connection.host}`);
+    logger.info(`📊 MongoDB Database Name: "${conn.connection.name}"`);
+    
+    // Verify database name matches expected
+    if (dbNameFromUri && conn.connection.name !== dbNameFromUri) {
+      logger.warn(`⚠️  Database name mismatch! URI specifies "${dbNameFromUri}" but connected to "${conn.connection.name}"`);
+    }
     
     // Handle connection events
     mongoose.connection.on('error', (err: Error) => {

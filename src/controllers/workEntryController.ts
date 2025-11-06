@@ -666,11 +666,16 @@ export const startWork = async (req: AuthRequest, res: Response): Promise<void> 
 // Direct work entry for first process stage (bypasses quantity validation)
 export const directWorkEntry = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    const dbName = mongoose.connection.name;
+    const dbHost = mongoose.connection.host;
+    
     logger.info('📥 Direct work entry endpoint called', {
       body: req.body,
       userId: req.user?.id,
       userRole: req.user?.role,
       endpoint: '/work-entries/direct',
+      databaseName: dbName,
+      databaseHost: dbHost,
       timestamp: new Date().toISOString()
     });
     
@@ -1011,7 +1016,11 @@ export const directWorkEntry = async (req: AuthRequest, res: Response): Promise<
     // Save work entry with proper error handling
     let savedWorkEntry;
     try {
-      logger.debug('💾 Attempting to save work entry to database...');
+      const dbName = mongoose.connection.name;
+      logger.debug('💾 Attempting to save work entry to database...', {
+        databaseName: dbName,
+        databaseHost: mongoose.connection.host
+      });
       savedWorkEntry = await workEntry.save();
       logger.info('✅ Work entry saved successfully to database', {
         workEntryId: savedWorkEntry._id.toString(),
@@ -1020,6 +1029,8 @@ export const directWorkEntry = async (req: AuthRequest, res: Response): Promise<
         productId: savedWorkEntry.productId.toString(),
         achieved: savedWorkEntry.achieved,
         rejected: savedWorkEntry.rejected,
+        databaseName: dbName,
+        databaseHost: mongoose.connection.host,
         savedAt: new Date().toISOString()
       });
     } catch (saveError: any) {
