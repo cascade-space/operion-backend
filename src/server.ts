@@ -24,7 +24,11 @@ import { wsServer } from '@/services/websocketServer';
 import redisService from '@/services/redisService';
 import cronService from '@/services/cronService'; // Initialize cron jobs (photo cleanup, validation cleanup, etc.)
 import { errorHandler, timeoutMiddleware } from '@/middleware/errorHandler';
+import { csrfTokenMiddleware, csrfProtectionMiddleware } from '@/middleware/csrf';
+import { requestDeduplication } from '@/middleware/deduplication';
+import { responseCache } from '@/middleware/cacheMiddleware';
 import logger, { getCorrelationId, logRequest } from '@/utils/logger';
+import { memoryMonitor } from '@/utils/memoryMonitor';
 
 // Import routes
 import authRoutes from '@/routes/auth';
@@ -360,6 +364,15 @@ app.use(helmet({
   },
   noSniff: true,
   xssFilter: true,
+  referrerPolicy: {
+    policy: 'strict-origin-when-cross-origin'
+  },
+  permissionsPolicy: {
+    camera: ["'self'"],
+    microphone: ["'self'"],
+    geolocation: ["'self'"],
+    fullscreen: ["'self'"]
+  }
 }));
 
 // Compression middleware
@@ -367,6 +380,10 @@ app.use(compression());
 
 // Cookie parser middleware
 app.use(cookieParser());
+
+// CSRF token middleware - must be after cookie parser
+// This sets the CSRF token cookie for all requests
+app.use(csrfTokenMiddleware);
 
 // Logging middleware
 const logLevel = env.LOG_LEVEL || (env.NODE_ENV === 'development' ? 'dev' : 'combined');
@@ -410,6 +427,23 @@ app.use((req, res, next) => {
   });
   
   next();
+});
+
+// Request deduplication middleware (prevents duplicate submissions)
+app.use(requestDeduplication.middleware());
+
+// CSRF token endpoint - allows frontend to get CSRF token
+app.get('/api/csrf-token', (req, res) => {
+  // CSRF token is already set in cookie by csrfTokenMiddleware
+  // Return it in response body as well for convenience
+  const response: ApiResponse = {
+    success: true,
+    data: {
+      csrfToken: req.csrfToken ? req.csrfToken() : undefined
+    },
+    status: 200
+  };
+  res.json(response);
 });
 
 // Health check endpoint
@@ -512,6 +546,10 @@ app.get('/health', async (req, res) => {
   res.status(healthCheck.success ? 200 : 503).json(healthCheck);
 });
 
+// Apply CSRF protection to all API routes (except GET/HEAD/OPTIONS)
+// Note: CSRF protection is applied per route, not globally
+// We'll apply it in individual route files where needed
+
 // API routes with versioning
 const API_VERSION = '/api/v1';
 app.use(`${API_VERSION}/auth`, authRoutes);
@@ -530,12 +568,12 @@ app.use(`${API_VERSION}/process-stages`, processStageRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/factories', factoryRoutes);
 app.use('/api/users', userRoutes);
-app.use('/api/products', productRoutes);
-app.use('/api/processes', processRoutes);
+app.use('/api/products', responseCache.middleware(30000), productRoutes); // Cache for 30 seconds
+app.use('/api/processes', responseCache.middleware(30000), processRoutes); // Cache for 30 seconds
 app.use('/api/machines', machineRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/work-entries', workEntryRoutes);
-app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/dashboard', responseCache.middleware(30000), dashboardRoutes); // Cache for 30 seconds
 app.use('/api/reports', timeoutMiddleware(30000), reportsRoutes); // 30s timeout for reports
 app.use('/api/process-stages', processStageRoutes);
 
@@ -637,6 +675,9 @@ const startServer = async () => {
     // Initialize WebSocket server
     wsServer.initialize(server);
 
+    // Start memory monitoring
+    memoryMonitor.start();
+
     // Start HTTP server
     server.listen(PORT, () => {
       logger.info('Server started', {
@@ -706,6 +747,14 @@ const gracefulShutdown = async (signal: string) => {
       logger.info('WebSocket server closed');
     } catch (error) {
       logger.error('Error closing WebSocket server', { error: error instanceof Error ? error.message : String(error) });
+    }
+
+    // Stop memory monitoring
+    try {
+      memoryMonitor.stop();
+      logger.info('Memory monitoring stopped');
+    } catch (error) {
+      logger.error('Error stopping memory monitor', { error: error instanceof Error ? error.message : String(error) });
     }
     
     logger.info('Process terminated');

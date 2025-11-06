@@ -5,6 +5,7 @@ import Process from '@/models/Process';
 import Product from '@/models/Product';
 import User from '@/models/User';
 import cacheService from './cacheService';
+import { responseCache } from '@/middleware/cacheMiddleware';
 
 export interface DashboardStats {
   attendance: {
@@ -384,6 +385,10 @@ class DashboardService {
   invalidateCache(factoryId: string | mongoose.Types.ObjectId): void {
     const factoryIdStr = factoryId.toString();
     cacheService.invalidatePattern('dashboard:stats:*', { factoryId: factoryIdStr });
+    // Also invalidate response cache for dashboard routes
+    responseCache.invalidate('dashboard').catch(() => {
+      // Ignore errors
+    });
   }
 }
 

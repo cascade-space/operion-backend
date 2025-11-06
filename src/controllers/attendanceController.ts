@@ -6,6 +6,7 @@ import User from '@/models/User';
 import WorkEntry from '@/models/WorkEntry';
 import { ApiResponse, ILocation } from '@/types';
 import { AuthRequest } from '@/middleware/auth';
+import { validateGeofence, LocationWithAccuracy } from '@/utils/geofence';
 import logger, { logError } from '@/utils/logger';
 
 // Get all attendance records
@@ -614,15 +615,44 @@ export const checkIn = async (req: AuthRequest, res: Response): Promise<void> =>
       return;
     }
 
-    // Strict geofence validation - block check-in if outside factory radius
+    // Strict geofence validation with GPS accuracy check
     let isWithinGeofence = true;
     if (employee?.factoryId && (employee.factoryId as any).geofence) {
       const factory = employee.factoryId as any;
       if (factory.geofence && factory.settings?.geofencingEnabled !== false) {
-        // Calculate distance for logging
-        const distanceInMeters = factory.calculateDistance(location.latitude, location.longitude);
-        const distanceInKm = distanceInMeters / 1000;
-        isWithinGeofence = factory.isWithinGeofence(location.latitude, location.longitude);
+        // Validate GPS accuracy and geofence
+        const locationWithAccuracy: LocationWithAccuracy = {
+          latitude: location.latitude,
+          longitude: location.longitude,
+          accuracy: location.accuracy, // GPS accuracy in meters (if provided)
+          timestamp: new Date()
+        };
+
+        const geofenceValidation = validateGeofence(
+          locationWithAccuracy,
+          factory.geofence.latitude,
+          factory.geofence.longitude,
+          factory.geofence.radius
+        );
+
+        // Check GPS accuracy first
+        if (!geofenceValidation.accuracyAcceptable) {
+          logger.warn('Check-in blocked: GPS accuracy too low', {
+            employeeId: employeeId.toString(),
+            factoryId: factory._id,
+            accuracy: location.accuracy,
+            location: { latitude: location.latitude, longitude: location.longitude }
+          });
+          const response: ApiResponse = {
+            success: false,
+            error: geofenceValidation.error || 'GPS accuracy is too low. Please ensure you have a clear view of the sky.',
+            status: 400
+          };
+          res.status(400).json(response);
+          return;
+        }
+
+        isWithinGeofence = geofenceValidation.isWithinGeofence;
         
         // Detailed geofence validation logging
         logger.info('Geofence validation', {
@@ -636,13 +666,14 @@ export const checkIn = async (req: AuthRequest, res: Response): Promise<void> =>
           },
           employeeLocation: {
             latitude: location.latitude,
-            longitude: location.longitude
+            longitude: location.longitude,
+            accuracy: location.accuracy
           },
           calculatedDistance: {
-            meters: Math.round(distanceInMeters * 100) / 100,
-            kilometers: Math.round(distanceInKm * 100) / 100
+            meters: Math.round(geofenceValidation.distance * 100) / 100
           },
           withinGeofence: isWithinGeofence,
+          accuracyAcceptable: geofenceValidation.accuracyAcceptable,
           geofencingEnabled: factory.settings?.geofencingEnabled !== false
         });
         
@@ -659,10 +690,9 @@ export const checkIn = async (req: AuthRequest, res: Response): Promise<void> =>
               radius: factory.geofence.radius
             },
             calculatedDistance: {
-              meters: Math.round(distanceInMeters * 100) / 100,
-              kilometers: Math.round(distanceInKm * 100) / 100
+              meters: Math.round(geofenceValidation.distance * 100) / 100
             },
-            message: `Employee is ${Math.round(distanceInKm * 100) / 100} km (${Math.round(distanceInMeters * 100) / 100} m) away from factory. Geofence radius: ${factory.geofence.radius} m`
+            message: `Employee is ${Math.round(geofenceValidation.distance * 100) / 100} m away from factory. Geofence radius: ${factory.geofence.radius} m`
           });
           const response: ApiResponse = {
             success: false,
@@ -675,10 +705,10 @@ export const checkIn = async (req: AuthRequest, res: Response): Promise<void> =>
           logger.debug('Check-in geofence validation passed', {
             employeeId: employeeId.toString(),
             distance: {
-              meters: Math.round(distanceInMeters * 100) / 100,
-              kilometers: Math.round(distanceInKm * 100) / 100
+              meters: Math.round(geofenceValidation.distance * 100) / 100
             },
-            radius: factory.geofence.radius
+            radius: factory.geofence.radius,
+            accuracy: location.accuracy
           });
         }
       }

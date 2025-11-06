@@ -7,8 +7,11 @@ import { ApiResponse } from '@/types';
 import bcrypt from 'bcryptjs';
 import { authenticate, authorize } from '@/middleware/auth';
 import { validateMongoId } from '@/middleware/commonValidation';
+import { sanitizeUserInput } from '@/middleware/sanitization';
+import { auditUserCreation, auditUserDeletion, auditPasswordChange } from '@/middleware/auditLogger';
 import mongoose from 'mongoose';
 import { generateUserId, generatePassword, generateEmailFromId } from '@/utils/userUtils';
+import { validatePasswordForNewUsers } from '@/utils/passwordPolicy';
 import { wsServer } from '@/services/websocketServer';
 
 const router = Router();
@@ -54,11 +57,22 @@ const validateUserUpdate = [
 ];
 
 const validatePassword = [
-  body('password').isLength({ min: 1 }).withMessage('Password is required'),
+  body('password')
+    .custom((value) => {
+      if (!value) {
+        throw new Error('Password is required');
+      }
+      const result = validatePasswordForNewUsers(value);
+      if (!result.isValid) {
+        throw new Error(result.error || 'Password does not meet requirements');
+      }
+      return true;
+    }),
+  handleValidationErrors
 ];
 
 // Create superadmin endpoint (for initial setup)
-router.post('/create-superadmin', async (req, res) => {
+router.post('/create-superadmin', sanitizeUserInput, async (req, res) => {
   try {
     const { email, password } = req.body;
     
@@ -83,11 +97,12 @@ router.post('/create-superadmin', async (req, res) => {
       return res.status(400).json(response);
     }
 
-    // Validate password length
-    if (password.length < 6) {
+    // Validate password using new policy for new users
+    const passwordValidation = validatePasswordForNewUsers(password);
+    if (!passwordValidation.isValid) {
       const response: ApiResponse = {
         success: false,
-        error: 'Password must be at least 6 characters',
+        error: passwordValidation.error || 'Password does not meet requirements',
         status: 400
       };
       return res.status(400).json(response);
@@ -319,7 +334,7 @@ router.get('/:id', authenticate, async (req, res) => {
 });
 
 // Create new user
-router.post('/', authenticate, authorize('super_admin', 'factory_admin', 'supervisor'), validateUser, async (req, res) => {
+router.post('/', authenticate, authorize('super_admin', 'factory_admin', 'supervisor'), sanitizeUserInput, auditUserCreation, validateUser, async (req, res) => {
   try {
 
     
@@ -514,7 +529,7 @@ router.post('/', authenticate, authorize('super_admin', 'factory_admin', 'superv
 });
 
 // Update user
-router.put('/:id', authenticate, authorize('super_admin', 'factory_admin', 'supervisor'), validateMongoId, validateUserUpdate, async (req, res) => {
+router.put('/:id', authenticate, authorize('super_admin', 'factory_admin', 'supervisor'), validateMongoId, sanitizeUserInput, validateUserUpdate, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -647,7 +662,7 @@ router.put('/:id', authenticate, authorize('super_admin', 'factory_admin', 'supe
 });
 
 // Delete user
-router.delete('/:id', authenticate, authorize('super_admin', 'factory_admin', 'supervisor'), validateMongoId, async (req, res) => {
+router.delete('/:id', authenticate, authorize('super_admin', 'factory_admin', 'supervisor'), validateMongoId, auditUserDeletion, async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
     if (!user) {
@@ -898,7 +913,7 @@ router.post('/:id/reset-device', authenticate, authorize('super_admin', 'factory
 
 
 // Update user password
-router.put('/:id/password', authenticate, validateMongoId, validatePassword, async (req, res) => {
+router.put('/:id/password', authenticate, validateMongoId, auditPasswordChange, validatePassword, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {

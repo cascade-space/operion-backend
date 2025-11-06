@@ -65,9 +65,10 @@ export const connectDB = async (): Promise<void> => {
     }
 
     // Adjust pool size based on environment
+    // Optimized for t2.micro: max 30, min 3 (reduced from 50/5)
     const isProduction = process.env.NODE_ENV === 'production';
-    const maxPoolSize = isProduction ? 50 : 10; // Higher pool for production
-    const minPoolSize = isProduction ? 5 : 2;
+    const maxPoolSize = isProduction ? 30 : 10; // Reduced for t2.micro memory constraints
+    const minPoolSize = isProduction ? 3 : 2; // Reduced minimum pool size
     
     // Increased timeouts for DNS resolution and network issues
     const conn = await mongoose.connect(MONGODB_URI, {

@@ -64,6 +64,10 @@ interface EnvConfig {
   
   // Geofencing Configuration
   DEFAULT_GEOFENCE_RADIUS: number;
+  
+  // WebSocket Configuration
+  WS_MAX_CONNECTIONS: number;
+  WS_MESSAGE_RATE_LIMIT: number;
 }
 
 class EnvValidator {
@@ -185,13 +189,17 @@ class EnvValidator {
 
     // Rate Limiting
     this.config.RATE_LIMIT_WINDOW_MS = this.validateNumber('RATE_LIMIT_WINDOW_MS', 900000, false);
-    this.config.RATE_LIMIT_MAX_REQUESTS = this.validateNumber('RATE_LIMIT_MAX_REQUESTS', 100, false);
+    this.config.RATE_LIMIT_MAX_REQUESTS = this.validateNumber('RATE_LIMIT_MAX_REQUESTS', 500, false);
 
     // CORS Configuration
     this.config.CORS_ORIGINS = process.env.CORS_ORIGINS;
 
     // Geofencing Configuration
     this.config.DEFAULT_GEOFENCE_RADIUS = this.validateNumber('DEFAULT_GEOFENCE_RADIUS', 100, false);
+
+    // WebSocket Configuration
+    this.config.WS_MAX_CONNECTIONS = this.validateNumber('WS_MAX_CONNECTIONS', 50, false);
+    this.config.WS_MESSAGE_RATE_LIMIT = this.validateNumber('WS_MESSAGE_RATE_LIMIT', 60, false);
 
     // Display warnings
     if (this.warnings.length > 0) {

@@ -4,6 +4,7 @@ import Product from '@/models/Product';
 import { ApiResponse } from '@/types';
 import { authenticate, authorize } from '@/middleware/auth';
 import { validateMongoId } from '@/middleware/commonValidation';
+import { sanitizeProductInput } from '@/middleware/sanitization';
 import { wsServer } from '@/services/websocketServer';
 
 const router = Router();
@@ -119,7 +120,7 @@ router.get('/:id', authenticate, validateMongoId, async (req, res) => {
 });
 
 // Create new product
-router.post('/', authenticate, authorize('super_admin', 'factory_admin'), validateProduct, async (req, res) => {
+router.post('/', authenticate, authorize('super_admin', 'factory_admin'), sanitizeProductInput, validateProduct, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -198,7 +199,7 @@ router.post('/', authenticate, authorize('super_admin', 'factory_admin'), valida
 });
 
 // Update product
-router.put('/:id', authenticate, authorize('super_admin', 'factory_admin'), validateMongoId, validateProduct, async (req, res) => {
+router.put('/:id', authenticate, authorize('super_admin', 'factory_admin'), validateMongoId, sanitizeProductInput, validateProduct, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {

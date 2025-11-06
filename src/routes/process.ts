@@ -6,6 +6,7 @@ import User from '@/models/User';
 import { ApiResponse } from '@/types';
 import { authenticate, authorize } from '@/middleware/auth';
 import { validateMongoId } from '@/middleware/commonValidation';
+import { sanitizeProcessInput } from '@/middleware/sanitization';
 import { handleValidationErrors } from '@/middleware/validation';
 import quantityService from '@/services/quantityService';
 import { logError } from '@/utils/logger';
@@ -140,7 +141,7 @@ router.get('/:id', authenticate, validateMongoId, async (req, res) => {
 });
 
 // Create new process
-router.post('/', authenticate, authorize('super_admin', 'factory_admin'), validateProcess, async (req, res) => {
+router.post('/', authenticate, authorize('super_admin', 'factory_admin'), sanitizeProcessInput, validateProcess, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -208,7 +209,7 @@ router.post('/', authenticate, authorize('super_admin', 'factory_admin'), valida
 });
 
 // Update process
-router.put('/:id', authenticate, authorize('super_admin', 'factory_admin'), validateMongoId, validateProcess, async (req, res) => {
+router.put('/:id', authenticate, authorize('super_admin', 'factory_admin'), validateMongoId, sanitizeProcessInput, validateProcess, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {

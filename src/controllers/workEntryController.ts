@@ -1183,28 +1183,43 @@ export const completeWork = async (req: AuthRequest, res: Response): Promise<voi
     // Transfer to next stage is already handled in deductQuantity method
 
 
-    // Update work entry with completion data
-    const updatedWorkEntry = await WorkEntry.findByIdAndUpdate(
-      req.params.id,
-      {
-        achieved,
-        rejected,
-        photo,
-        reasonForLessProduction,
-        endTime: new Date() // Set end time when work is completed
-        // Keep validationStatus as 'pending' until validated by supervisor/admin
-      },
-      { new: true, runValidators: true }
-    )
-    .populate('employeeId', 'profile.firstName profile.lastName email')
-    .populate('processId', 'name')
-    .populate('factoryId', 'name');
+    // Update work entry with completion data (with optimistic locking)
+    workEntry.achieved = achieved;
+    workEntry.rejected = rejected;
+    workEntry.photo = photo;
+    workEntry.reasonForLessProduction = reasonForLessProduction;
+    workEntry.endTime = new Date(); // Set end time when work is completed
+    // Keep validationStatus as 'pending' until validated by supervisor/admin
+
+    let updatedWorkEntry;
+    try {
+      updatedWorkEntry = await workEntry.save();
+    } catch (error: any) {
+      // Check for version conflict (optimistic locking)
+      if (error.name === 'VersionError') {
+        const response: ApiResponse = {
+          success: false,
+          error: 'Work entry was modified by another user. Please refresh and try again.',
+          status: 409,
+          data: { conflict: true, version: workEntry.__v }
+        };
+        res.status(409).json(response);
+        return;
+      }
+      throw error;
+    }
+
+    // Populate fields for response
+    const populatedWorkEntry = await WorkEntry.findById(updatedWorkEntry._id)
+      .populate('employeeId', 'profile.firstName profile.lastName email')
+      .populate('processId', 'name')
+      .populate('factoryId', 'name');
 
     const response: ApiResponse = {
       success: true,
       message: 'Work completed successfully',
       status: 200,
-      data: updatedWorkEntry
+      data: populatedWorkEntry
     };
 
     // Broadcast production data update via WebSocket
@@ -1601,7 +1616,7 @@ export const validateWorkEntry = async (req: AuthRequest, res: Response): Promis
       return;
     }
 
-    // Update work entry with validation
+    // Update work entry with validation (with optimistic locking)
     workEntry.validationStatus = status;
     workEntry.validationNotes = validationNotes;
     if (req.user) {
@@ -1609,7 +1624,22 @@ export const validateWorkEntry = async (req: AuthRequest, res: Response): Promis
     }
     workEntry.validatedAt = new Date();
 
-    await workEntry.save();
+    try {
+      await workEntry.save();
+    } catch (error: any) {
+      // Check for version conflict (optimistic locking)
+      if (error.name === 'VersionError') {
+        const response: ApiResponse = {
+          success: false,
+          error: 'Work entry was modified by another user. Please refresh and try again.',
+          status: 409,
+          data: { conflict: true, version: workEntry.__v }
+        };
+        res.status(409).json(response);
+        return;
+      }
+      throw error;
+    }
     
     // Invalidate dashboard cache
     if (workEntry.factoryId) {
@@ -1697,11 +1727,26 @@ export const updateProduction = async (req: AuthRequest, res: Response): Promise
       return;
     }
 
-    // Update production data
+    // Update production data (with optimistic locking)
     workEntry.achieved = achieved;
     workEntry.rejected = rejected;
 
-    await workEntry.save();
+    try {
+      await workEntry.save();
+    } catch (error: any) {
+      // Check for version conflict (optimistic locking)
+      if (error.name === 'VersionError') {
+        const response: ApiResponse = {
+          success: false,
+          error: 'Work entry was modified by another user. Please refresh and try again.',
+          status: 409,
+          data: { conflict: true, version: workEntry.__v }
+        };
+        res.status(409).json(response);
+        return;
+      }
+      throw error;
+    }
     
     // Invalidate dashboard cache
     if (workEntry.factoryId) {

@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { body, param, query, validationResult } from 'express-validator';
 import { ApiResponse } from '@/types';
+import { validatePasswordForNewUsers } from '@/utils/passwordPolicy';
 
 // Validation result handler
 export const handleValidationErrors = (req: Request, res: Response, next: NextFunction): void => {
@@ -92,23 +93,28 @@ export const factoryValidation = [
   body('address.street')
     .trim()
     .notEmpty()
-    .withMessage('Street address is required'),
+    .isLength({ max: 200 })
+    .withMessage('Street address must be less than 200 characters'),
   body('address.city')
     .trim()
     .notEmpty()
-    .withMessage('City is required'),
+    .isLength({ max: 100 })
+    .withMessage('City must be less than 100 characters'),
   body('address.state')
     .trim()
     .notEmpty()
-    .withMessage('State is required'),
+    .isLength({ max: 100 })
+    .withMessage('State must be less than 100 characters'),
   body('address.country')
     .trim()
     .notEmpty()
-    .withMessage('Country is required'),
+    .isLength({ max: 100 })
+    .withMessage('Country must be less than 100 characters'),
   body('address.zipCode')
     .trim()
     .notEmpty()
-    .withMessage('ZIP code is required'),
+    .isLength({ max: 20 })
+    .withMessage('ZIP code must be less than 20 characters'),
   body('geofence.latitude')
     .isFloat({ min: -90, max: 90 })
     .withMessage('Latitude must be between -90 and 90'),
@@ -145,6 +151,18 @@ export const userValidation = [
       const cleanPhone = value.replace(/\D/g, '');
       if (cleanPhone.length < 5) {
         throw new Error('Phone number must have at least 5 digits for ID generation');
+      }
+      return true;
+    }),
+  // Enhanced password validation for new users
+  body('password')
+    .custom((value) => {
+      if (!value) {
+        throw new Error('Password is required');
+      }
+      const result = validatePasswordForNewUsers(value);
+      if (!result.isValid) {
+        throw new Error(result.error || 'Password does not meet requirements');
       }
       return true;
     }),
@@ -256,6 +274,16 @@ export const workEntryValidation = [
   body('photo')
     .notEmpty()
     .withMessage('Photo is required'),
+  body('reasonForLessProduction')
+    .optional()
+    .trim()
+    .isLength({ max: 1000 })
+    .withMessage('Reason for less production must be less than 1000 characters'),
+  body('validationNotes')
+    .optional()
+    .trim()
+    .isLength({ max: 1000 })
+    .withMessage('Validation notes must be less than 1000 characters'),
   handleValidationErrors
 ];
 

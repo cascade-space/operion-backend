@@ -8,6 +8,7 @@ import bcrypt from 'bcryptjs';
 import { authenticate, authorize } from '@/middleware/auth';
 import { validateMongoId } from '@/middleware/commonValidation';
 import { handleValidationErrors } from '@/middleware/validation';
+import { sanitizeFactoryInput } from '@/middleware/sanitization';
 import {
   registerFactory,
   getFactoryRequests,
@@ -63,11 +64,11 @@ const validateShiftUpdate = [
 ];
 
 // Main routes
-router.post('/register', validateFactoryRegistration, registerFactory);
+router.post('/register', sanitizeFactoryInput, validateFactoryRegistration, registerFactory);
 router.get('/requests', authenticate, authorize('super_admin'), getFactoryRequests);
 router.post('/requests/:requestId/approve', authenticate, authorize('super_admin'), approveFactoryRequest);
 router.post('/requests/:requestId/reject', authenticate, authorize('super_admin'), rejectFactoryRequest);
-router.post('/', authenticate, authorize('super_admin'), createFactory);
+router.post('/', authenticate, authorize('super_admin'), sanitizeFactoryInput, createFactory);
 // Validation middleware for geofence updates
 const validateGeofenceUpdate = [
   body('geofence.latitude').optional().isFloat({ min: -90, max: 90 }).withMessage('Invalid latitude'),

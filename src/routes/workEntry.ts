@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { body, param } from 'express-validator';
 import { authenticate, authorize } from '@/middleware/auth';
 import { validateMongoId } from '@/middleware/commonValidation';
+import { sanitizeWorkEntryInput } from '@/middleware/sanitization';
+import { auditWorkEntryValidation } from '@/middleware/auditLogger';
 import { handleValidationErrors } from '@/middleware/validation';
 import {
   testEndpoint,
@@ -37,7 +39,14 @@ const validateCompleteWork = [
   body('achieved').isInt({ min: 0 }).withMessage('Achieved must be a non-negative integer'),
   body('rejected').isInt({ min: 0 }).withMessage('Rejected must be a non-negative integer'),
   body('photo').isLength({ min: 1 }).withMessage('Work photo is required'),
-  body('reasonForLessProduction').optional().isLength({ min: 1, max: 500 }).withMessage('Reason must be between 1 and 500 characters'),
+  body('reasonForLessProduction').optional().trim().isLength({ max: 1000 }).withMessage('Reason must be less than 1000 characters'),
+];
+
+// Validation middleware for work entry validation
+const validateWorkEntryValidation = [
+  body('status').isIn(['approved', 'rejected']).withMessage('Status must be approved or rejected'),
+  body('validationNotes').optional().trim().isLength({ max: 1000 }).withMessage('Validation notes must be less than 1000 characters'),
+  handleValidationErrors
 ];
 
 // Routes
@@ -49,7 +58,7 @@ router.get('/:id', authenticate, validateMongoId, getWorkEntryById);
 
 router.post('/start', authenticate, startWork);
 router.post('/direct', authenticate, authorize('employee'), directWorkEntry);
-router.post('/complete/:id', authenticate, authorize('employee'), validateMongoId, validateCompleteWork, completeWork);
+router.post('/complete/:id', authenticate, authorize('employee'), validateMongoId, sanitizeWorkEntryInput, validateCompleteWork, completeWork);
 router.delete('/:id', authenticate, authorize('employee'), validateMongoId, deleteWorkEntry);
 
 router.get('/employee/:employeeId', authenticate, [
@@ -66,7 +75,7 @@ router.get('/employee/:employeeId/daily-summary', authenticate, [
 ], getEmployeeDailySummary);
 
 router.get('/pending/list', authenticate, authorize('super_admin', 'factory_admin', 'supervisor'), getPendingValidations);
-router.post('/:id/validate', authenticate, authorize('super_admin', 'factory_admin', 'supervisor'), validateMongoId, validateWorkEntry);
+router.post('/:id/validate', authenticate, authorize('super_admin', 'factory_admin', 'supervisor'), validateMongoId, sanitizeWorkEntryInput, auditWorkEntryValidation, validateWorkEntryValidation, validateWorkEntry);
 router.patch('/:id/production', authenticate, authorize('super_admin', 'factory_admin', 'supervisor'), validateMongoId, updateProduction);
 router.get('/pending-validations', authenticate, authorize('super_admin', 'factory_admin', 'supervisor'), getPendingValidationsList);
 

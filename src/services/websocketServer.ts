@@ -27,6 +27,10 @@ class WebSocketServerService {
   private factoryRooms: Map<string, Set<string>> = new Map();
   private instanceId: string;
   private redisEnabled: boolean = false;
+  // Message rate limiting per connection
+  private messageCounts: Map<string, { count: number; resetAt: number }> = new Map();
+  // Connection throttling per IP
+  private connectionAttempts: Map<string, { count: number; resetAt: number }> = new Map();
 
   constructor() {
     // Generate unique instance ID for this server instance
@@ -105,6 +109,48 @@ class WebSocketServerService {
 
   private async handleConnection(ws: AuthenticatedWebSocket, req: IncomingMessage) {
     try {
+      // Check connection limit before authentication
+      if (this.clients.size >= env.WS_MAX_CONNECTIONS) {
+        logger.warn('WebSocket connection limit reached', {
+          currentConnections: this.clients.size,
+          maxConnections: env.WS_MAX_CONNECTIONS
+        });
+        ws.close(1008, 'Server at capacity. Please try again later.');
+        return;
+      }
+
+      // Connection throttling per IP (prevent connection storms)
+      const clientIp = req.headers['x-forwarded-for']?.toString().split(',')[0] || 
+                       req.socket.remoteAddress || 'unknown';
+      const now = Date.now();
+      const throttleWindow = 60 * 1000; // 1 minute
+      const maxConnectionsPerMinute = 5;
+
+      const attemptKey = `ip:${clientIp}`;
+      const attempts = this.connectionAttempts.get(attemptKey);
+
+      if (attempts) {
+        if (now < attempts.resetAt) {
+          // Still in throttle window
+          if (attempts.count >= maxConnectionsPerMinute) {
+            logger.warn('WebSocket connection throttled', {
+              ip: clientIp,
+              attempts: attempts.count,
+              resetAt: new Date(attempts.resetAt).toISOString()
+            });
+            ws.close(1008, 'Too many connection attempts. Please wait before trying again.');
+            return;
+          }
+          attempts.count++;
+        } else {
+          // Reset window
+          this.connectionAttempts.set(attemptKey, { count: 1, resetAt: now + throttleWindow });
+        }
+      } else {
+        // First attempt from this IP
+        this.connectionAttempts.set(attemptKey, { count: 1, resetAt: now + throttleWindow });
+      }
+
       // Extract token from query parameters or Authorization header
       const url = new URL(req.url || '', `http://${req.headers.host}`);
       let token = url.searchParams.get('token');
@@ -164,9 +210,39 @@ class WebSocketServerService {
         timestamp: new Date().toISOString()
       });
 
-      // Handle messages
+      // Handle messages with rate limiting
       ws.on('message', (data) => {
         try {
+          // Check message rate limit
+          const messageKey = `${ws.factoryId}-${ws.userId}`;
+          const now = Date.now();
+          const rateLimitWindow = 60 * 1000; // 1 minute
+          const maxMessages = env.WS_MESSAGE_RATE_LIMIT;
+
+          const messageData = this.messageCounts.get(messageKey);
+          if (messageData) {
+            if (now < messageData.resetAt) {
+              // Still in rate limit window
+              if (messageData.count >= maxMessages) {
+                logger.warn('WebSocket message rate limit exceeded', {
+                  userId: ws.userId,
+                  factoryId: ws.factoryId,
+                  count: messageData.count,
+                  limit: maxMessages
+                });
+                ws.close(1008, 'Message rate limit exceeded');
+                return;
+              }
+              messageData.count++;
+            } else {
+              // Reset window
+              this.messageCounts.set(messageKey, { count: 1, resetAt: now + rateLimitWindow });
+            }
+          } else {
+            // First message from this connection
+            this.messageCounts.set(messageKey, { count: 1, resetAt: now + rateLimitWindow });
+          }
+
           const message = JSON.parse(data.toString());
           this.handleMessage(ws, message);
         } catch (error) {
@@ -224,6 +300,10 @@ class WebSocketServerService {
 
   private handleDisconnect(clientId: string, factoryId: string) {
     this.clients.delete(clientId);
+    
+    // Clean up message rate limit tracking
+    const messageKey = `${factoryId}-${clientId.split('-')[1]}`;
+    this.messageCounts.delete(messageKey);
     
     const factoryRoom = this.factoryRooms.get(factoryId);
     if (factoryRoom) {
@@ -327,6 +407,8 @@ class WebSocketServerService {
   getStats() {
     return {
       totalClients: this.clients.size,
+      maxConnections: env.WS_MAX_CONNECTIONS,
+      connectionUtilization: `${this.clients.size}/${env.WS_MAX_CONNECTIONS}`,
       factoryRooms: Array.from(this.factoryRooms.entries()).map(([factoryId, clients]) => ({
         factoryId,
         clientCount: clients.size
@@ -342,6 +424,8 @@ class WebSocketServerService {
     }
     this.clients.clear();
     this.factoryRooms.clear();
+    this.messageCounts.clear();
+    this.connectionAttempts.clear();
   }
 }
 
