@@ -8,7 +8,8 @@ import {
   resetPasswordRequest, 
   resetPassword,
   getProfile,
-  updateProfile
+  updateProfile,
+  updatePassword
 } from '@/controllers/authController';
 import { 
   authenticate, 
@@ -32,6 +33,7 @@ router.post('/logout', authenticate, logout);
 router.get('/validate', authenticate, validateToken);
 router.get('/profile', authenticate, getProfile);
 router.put('/profile', authenticate, updateProfile);
+router.put('/password', authenticate, updatePassword);
 
 // Super admin only routes
 router.post('/register', authenticate, requireSuperAdmin, registerValidation, register);

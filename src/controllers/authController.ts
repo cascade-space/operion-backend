@@ -724,3 +724,96 @@ export const updateProfile = async (req: AuthRequest, res: Response): Promise<vo
     res.status(500).json(response);
   }
 };
+
+// Update user password (requires current password verification)
+export const updatePassword = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.user) {
+      const response: ApiResponse = {
+        success: false,
+        error: 'User not found',
+        status: 404
+      };
+      res.status(404).json(response);
+      return;
+    }
+
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      const response: ApiResponse = {
+        success: false,
+        error: 'Current password and new password are required',
+        status: 400
+      };
+      res.status(400).json(response);
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      const response: ApiResponse = {
+        success: false,
+        error: 'New password must be at least 6 characters long',
+        status: 400
+      };
+      res.status(400).json(response);
+      return;
+    }
+
+    // Fetch user with password to verify current password
+    // Handle both _id (ObjectId) and id (string) - cached users might be plain objects
+    const userId = req.user._id || req.user.id;
+    if (!userId) {
+      const response: ApiResponse = {
+        success: false,
+        error: 'User ID not found',
+        status: 400
+      };
+      res.status(400).json(response);
+      return;
+    }
+
+    const user = await User.findById(userId).select('+password');
+    if (!user) {
+      const response: ApiResponse = {
+        success: false,
+        error: 'User not found',
+        status: 404
+      };
+      res.status(404).json(response);
+      return;
+    }
+
+    // Verify current password
+    const isPasswordValid = await user.comparePassword(currentPassword);
+    if (!isPasswordValid) {
+      const response: ApiResponse = {
+        success: false,
+        error: 'Current password is incorrect',
+        status: 401
+      };
+      res.status(401).json(response);
+      return;
+    }
+
+    // Update password (Mongoose will hash it automatically via pre-save hook)
+    user.password = newPassword;
+    await user.save();
+
+    const response: ApiResponse = {
+      success: true,
+      message: 'Password updated successfully',
+      status: 200
+    };
+
+    res.status(200).json(response);
+  } catch (error: any) {
+    console.error('Update password error:', error);
+    const response: ApiResponse = {
+      success: false,
+      error: error.message || 'Failed to update password',
+      status: 500
+    };
+    res.status(500).json(response);
+  }
+};
