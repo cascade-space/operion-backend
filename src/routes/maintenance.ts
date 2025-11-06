@@ -5,7 +5,7 @@ import cronService from '@/services/cronService';
 import { manualPhotoCleanup, getCleanupStats } from '@/utils/photoCleanup';
 import { manualValidationCleanup, getValidationCleanupStats } from '@/utils/validationCleanup';
 
-const router = express.Router();
+const router: express.Router = express.Router();
 
 // Get cron service status
 router.get('/cron/status', authenticate, authorize('super_admin', 'factory_admin'), async (req, res) => {

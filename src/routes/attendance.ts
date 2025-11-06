@@ -18,7 +18,7 @@ import {
   markAbsent
 } from '@/controllers/attendanceController';
 
-const router = Router();
+const router: Router = Router();
 
 // Validation middleware
 const validateAttendance = [

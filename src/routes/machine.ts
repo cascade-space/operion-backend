@@ -6,7 +6,7 @@ import Machine from '@/models/Machine';
 import { ApiResponse } from '@/types';
 import mongoose from 'mongoose';
 
-const router = Router();
+const router: Router = Router();
 
 // Get all machines for factory
 router.get('/', authenticate, async (req: Request, res: Response) => {

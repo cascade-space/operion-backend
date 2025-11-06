@@ -4,7 +4,7 @@ import ProcessStage from '@/models/ProcessStage';
 import { ApiResponse } from '@/types';
 import { authenticate, authorize } from '@/middleware/auth';
 
-const router = Router();
+const router: Router = Router();
 
 // Get all process stages with filters
 router.get('/', authenticate, authorize('super_admin', 'factory_admin', 'supervisor'), async (req, res) => {

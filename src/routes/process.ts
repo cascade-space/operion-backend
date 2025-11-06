@@ -12,7 +12,7 @@ import quantityService from '@/services/quantityService';
 import { logError } from '@/utils/logger';
 import { wsServer } from '@/services/websocketServer';
 
-const router = Router();
+const router: Router = Router();
 
 // Validation middleware
 const validateProcess = [
@@ -298,7 +298,7 @@ router.put('/:id', authenticate, authorize('super_admin', 'factory_admin'), vali
     };
 
     // Broadcast WebSocket event for process update
-    if (process.factoryId) {
+    if (process.factoryId && updatedProcess) {
       wsServer.broadcastToFactory(process.factoryId.toString(), {
         type: 'process_updated',
         data: { processId: updatedProcess._id.toString(), process: updatedProcess }

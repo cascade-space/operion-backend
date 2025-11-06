@@ -20,7 +20,7 @@ import {
   registerValidation 
 } from '@/middleware/validation';
 
-const router = Router();
+const router: Router = Router();
 
 // Public routes
 router.post('/login', loginValidation, login);

@@ -24,7 +24,7 @@ import {
   getEmployeeDailySummary
 } from '@/controllers/workEntryController';
 
-const router = Router();
+const router: Router = Router();
 
 // Validation middleware for starting work
 const validateStartWork = [

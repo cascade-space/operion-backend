@@ -15,7 +15,7 @@ import { generateUserId, generatePassword, generateEmailFromId } from '@/utils/u
 import { validatePasswordForNewUsers } from '@/utils/passwordPolicy';
 import { wsServer } from '@/services/websocketServer';
 
-const router = Router();
+const router: Router = Router();
 
 // Validation middleware for user creation
 const validateUser = [
@@ -658,7 +658,7 @@ router.put('/:id', authenticate, authorize('super_admin', 'factory_admin', 'supe
     };
 
     // Broadcast WebSocket event for user update
-    if (user.factoryId) {
+    if (user.factoryId && updatedUser) {
       wsServer.broadcastToFactory(user.factoryId.toString(), {
         type: 'user_updated',
         data: { userId: updatedUser._id.toString(), user: updatedUser }

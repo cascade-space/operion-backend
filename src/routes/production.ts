@@ -7,19 +7,19 @@ import {
   submitProduction
 } from '@/controllers/productionController';
 
-const router = Router();
+const router: Router = Router();
 
 // Check-in endpoint
-router.post('/checkin', authenticate, checkIn);
+router.post('/checkin', authenticate, checkIn as any);
 
 // Get process stages for a product
-router.get('/process-stages', authenticate, getProcessStagesByProduct);
+router.get('/process-stages', authenticate, getProcessStagesByProduct as any);
 
 // Get process status (available quantity)
-router.get('/process-status', authenticate, getProcessStatus);
+router.get('/process-status', authenticate, getProcessStatus as any);
 
 // Submit production entry
-router.post('/submit', authenticate, authorize('employee'), submitProduction);
+router.post('/submit', authenticate, authorize('employee'), submitProduction as any);
 
 export default router;
 

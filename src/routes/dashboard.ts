@@ -11,7 +11,7 @@ import {
   getRejectionStats
 } from '@/controllers/dashboardController';
 
-const router = Router();
+const router: Router = Router();
 
 // Routes
 router.get('/stats', authenticate, getDashboardStats);

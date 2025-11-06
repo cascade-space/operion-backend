@@ -28,7 +28,7 @@ import {
 } from '@/controllers/factoryController';
 import logger from '@/utils/logger';
 
-const router = Router();
+const router: Router = Router();
 
 // Validation middleware
 const validateFactoryRegistration = [

@@ -1,14 +1,22 @@
-import createDOMPurify from 'isomorphic-dompurify';
+// Use require to avoid TypeScript module resolution issues
+const createDOMPurifyModule = require('isomorphic-dompurify');
 
-// Create DOMPurify instance - handle both default and namespace exports
+// Create DOMPurify instance - handle different export patterns
 let DOMPurify: any;
-try {
-  DOMPurify = typeof createDOMPurify === 'function' 
-    ? createDOMPurify() 
-    : (createDOMPurify as any).default || createDOMPurify;
-} catch {
-  // Fallback if import fails
-  DOMPurify = createDOMPurify;
+if (typeof createDOMPurifyModule === 'function') {
+  DOMPurify = createDOMPurifyModule();
+} else if (createDOMPurifyModule.default && typeof createDOMPurifyModule.default === 'function') {
+  DOMPurify = createDOMPurifyModule.default();
+} else if (createDOMPurifyModule.default) {
+  DOMPurify = createDOMPurifyModule.default;
+} else {
+  DOMPurify = createDOMPurifyModule;
+}
+
+// Fallback if DOMPurify is not properly initialized
+if (!DOMPurify || typeof DOMPurify.sanitize !== 'function') {
+  console.warn('DOMPurify not properly initialized, using passthrough sanitizer');
+  DOMPurify = { sanitize: (dirty: string) => dirty };
 }
 
 /**

@@ -44,7 +44,7 @@ import reportsRoutes from '@/routes/reports';
 import processStageRoutes from '@/routes/processStage';
 import productionRoutes from '@/routes/production';
 
-const app = express();
+const app: express.Application = express();
 const server = createServer(app);
 const PORT = env.PORT;
 
@@ -375,12 +375,6 @@ app.use(helmet({
   referrerPolicy: {
     policy: 'strict-origin-when-cross-origin'
   },
-  permissionsPolicy: {
-    camera: ["'self'"],
-    microphone: ["'self'"],
-    geolocation: ["'self'"],
-    fullscreen: ["'self'"]
-  }
 }));
 
 // Compression middleware

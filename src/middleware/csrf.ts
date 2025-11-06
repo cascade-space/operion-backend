@@ -60,7 +60,7 @@ export const csrfTokenMiddleware = (req: Request, res: Response, next: NextFunct
   if (isPublicEndpoint(req.path)) {
     // Still generate token for GET requests to public endpoints
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
-      csrfProtection(req, res, () => {
+      csrfProtection(req as any, res as any, () => {
         if (req.csrfToken) {
           res.cookie('XSRF-TOKEN', req.csrfToken(), getCookieOptions());
         }
@@ -73,7 +73,7 @@ export const csrfTokenMiddleware = (req: Request, res: Response, next: NextFunct
   // For GET requests, just generate and set the token
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
     // Generate CSRF token
-    csrfProtection(req, res, () => {
+    csrfProtection(req as any, res as any, () => {
       // Set CSRF token in cookie for frontend to read
       if (req.csrfToken) {
         res.cookie('XSRF-TOKEN', req.csrfToken(), getCookieOptions());
@@ -84,7 +84,7 @@ export const csrfTokenMiddleware = (req: Request, res: Response, next: NextFunct
   }
   
   // For other methods, validate CSRF token
-  csrfProtection(req, res, (err) => {
+  csrfProtection(req as any, res as any, (err) => {
     if (err) {
       // Enhanced error logging for debugging
       const csrfTokenHeader = req.headers['x-xsrf-token'] || req.headers['x-csrf-token'] || req.headers['xsrf-token'] || req.headers['csrf-token'];
@@ -158,7 +158,7 @@ export const csrfProtectionMiddleware = (req: Request, res: Response, next: Next
   }
   
   // Apply CSRF protection
-  csrfProtection(req, res, (err) => {
+  csrfProtection(req as any, res as any, (err) => {
     if (err) {
       // Enhanced error logging for debugging
       const csrfTokenHeader = req.headers['x-xsrf-token'] || req.headers['x-csrf-token'] || req.headers['xsrf-token'] || req.headers['csrf-token'];

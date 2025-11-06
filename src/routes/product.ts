@@ -7,7 +7,7 @@ import { validateMongoId } from '@/middleware/commonValidation';
 import { sanitizeProductInput } from '@/middleware/sanitization';
 import { wsServer } from '@/services/websocketServer';
 
-const router = Router();
+const router: Router = Router();
 
 // Validation middleware
 const validateProduct = [

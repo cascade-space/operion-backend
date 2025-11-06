@@ -14,7 +14,7 @@ import mongoose from 'mongoose';
 import quantityService from '../services/quantityService';
 import logger, { logError } from '../utils/logger';
 
-const router = express.Router();
+const router: express.Router = express.Router();
 
 // Get production trends
 router.get('/trends', authenticate, async (req, res) => {

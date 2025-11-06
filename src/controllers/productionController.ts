@@ -162,7 +162,7 @@ export const getProcessStatus = async (req: AuthRequest, res: Response): Promise
       return;
     }
 
-    const { product_id, stage_id } = req.query;
+    const { product_id, stage_id } = (req as any).query;
 
     if (!product_id || typeof product_id !== 'string') {
       const response: ApiResponse = {
