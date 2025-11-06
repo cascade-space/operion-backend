@@ -5,7 +5,20 @@ import logger from '@/utils/logger';
 
 // CSRF protection middleware
 // Uses cookie-based CSRF tokens (more secure than session-based)
-const csrfProtection = csrf({ cookie: true });
+// Configure csurf to use cookie-based tokens with proper cookie settings for cross-origin
+const isProduction = process.env.NODE_ENV === 'production';
+const isHTTPS = isProduction || process.env.FORCE_HTTPS === 'true';
+const sameSite = isHTTPS ? ('none' as const) : ('lax' as const);
+
+const csrfProtection = csrf({ 
+  cookie: {
+    httpOnly: true, // Secret cookie should be httpOnly for security
+    secure: isHTTPS, // HTTPS only in production
+    sameSite, // Match sameSite setting for cross-origin support
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    path: '/' // Set path to root
+  }
+});
 
 // List of public endpoints that don't require CSRF protection
 const PUBLIC_ENDPOINTS = [
@@ -29,15 +42,8 @@ const isPublicEndpoint = (path: string): boolean => {
 };
 
 // Helper to get cookie options based on environment
+// Reuses the same settings as csurf configuration for consistency
 const getCookieOptions = () => {
-  const isProduction = process.env.NODE_ENV === 'production';
-  const isHTTPS = isProduction || process.env.FORCE_HTTPS === 'true';
-  
-  // For cross-origin requests in production (HTTPS), use 'none' with secure flag
-  // For same-origin or development, 'lax' is sufficient
-  // 'none' allows cookies to be sent with cross-origin requests (requires secure: true)
-  const sameSite = isHTTPS ? ('none' as const) : ('lax' as const);
-  
   return {
     httpOnly: false, // Must be false so JavaScript can read it
     secure: isHTTPS, // HTTPS only in production or when FORCE_HTTPS is set
