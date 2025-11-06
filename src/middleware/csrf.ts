@@ -23,9 +23,23 @@ const PUBLIC_ENDPOINTS = [
   '/api/v1/factories/register',
 ];
 
-// Check if endpoint is public (doesn't require CSRF protection)
-const isPublicEndpoint = (path: string): boolean => {
-  return PUBLIC_ENDPOINTS.some(endpoint => path.startsWith(endpoint));
+// Helper to get cookie options based on environment
+const getCookieOptions = () => {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const isHTTPS = isProduction || process.env.FORCE_HTTPS === 'true';
+  
+  // For cross-origin requests in production (HTTPS), use 'none' with secure flag
+  // For same-origin or development, 'lax' is sufficient
+  // 'none' allows cookies to be sent with cross-origin requests (requires secure: true)
+  const sameSite = isHTTPS ? ('none' as const) : ('lax' as const);
+  
+  return {
+    httpOnly: false, // Must be false so JavaScript can read it
+    secure: isHTTPS, // HTTPS only in production or when FORCE_HTTPS is set
+    sameSite, // 'none' for cross-origin POST requests (requires HTTPS), 'lax' for same-origin
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    path: '/' // Set path to root so cookie is available for all routes
+  };
 };
 
 // Middleware to add CSRF token to response cookie
@@ -37,12 +51,7 @@ export const csrfTokenMiddleware = (req: Request, res: Response, next: NextFunct
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
       csrfProtection(req, res, () => {
         if (req.csrfToken) {
-          res.cookie('XSRF-TOKEN', req.csrfToken(), {
-            httpOnly: false, // Must be false so JavaScript can read it
-            secure: process.env.NODE_ENV === 'production', // HTTPS only in production
-            sameSite: 'lax', // Changed from 'strict' to 'lax' for cross-origin support
-            maxAge: 24 * 60 * 60 * 1000 // 24 hours
-          });
+          res.cookie('XSRF-TOKEN', req.csrfToken(), getCookieOptions());
         }
       });
     }
