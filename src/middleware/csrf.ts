@@ -7,9 +7,49 @@ import logger from '@/utils/logger';
 // Uses cookie-based CSRF tokens (more secure than session-based)
 const csrfProtection = csrf({ cookie: true });
 
+// List of public endpoints that don't require CSRF protection
+const PUBLIC_ENDPOINTS = [
+  '/api/auth/login',
+  '/api/auth/register',
+  '/api/auth/refresh',
+  '/api/auth/forgot-password',
+  '/api/auth/reset-password',
+  '/api/factories/register',
+  '/api/v1/auth/login',
+  '/api/v1/auth/register',
+  '/api/v1/auth/refresh',
+  '/api/v1/auth/forgot-password',
+  '/api/v1/auth/reset-password',
+  '/api/v1/factories/register',
+];
+
+// Check if endpoint is public (doesn't require CSRF protection)
+const isPublicEndpoint = (path: string): boolean => {
+  return PUBLIC_ENDPOINTS.some(endpoint => path.startsWith(endpoint));
+};
+
 // Middleware to add CSRF token to response cookie
 // This must run on all requests to set/refresh the CSRF token cookie
 export const csrfTokenMiddleware = (req: Request, res: Response, next: NextFunction): void => {
+  // Skip CSRF for public authentication endpoints
+  if (isPublicEndpoint(req.path)) {
+    // Still generate token for GET requests to public endpoints
+    if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+      csrfProtection(req, res, () => {
+        if (req.csrfToken) {
+          res.cookie('XSRF-TOKEN', req.csrfToken(), {
+            httpOnly: false, // Must be false so JavaScript can read it
+            secure: process.env.NODE_ENV === 'production', // HTTPS only in production
+            sameSite: 'lax', // Changed from 'strict' to 'lax' for cross-origin support
+            maxAge: 24 * 60 * 60 * 1000 // 24 hours
+          });
+        }
+      });
+    }
+    next();
+    return;
+  }
+
   // For GET requests, just generate and set the token
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
     // Generate CSRF token
@@ -19,7 +59,7 @@ export const csrfTokenMiddleware = (req: Request, res: Response, next: NextFunct
         res.cookie('XSRF-TOKEN', req.csrfToken(), {
           httpOnly: false, // Must be false so JavaScript can read it
           secure: process.env.NODE_ENV === 'production', // HTTPS only in production
-          sameSite: 'strict', // CSRF protection
+          sameSite: 'lax', // Changed from 'strict' to 'lax' for cross-origin support
           maxAge: 24 * 60 * 60 * 1000 // 24 hours
         });
       }
@@ -53,8 +93,8 @@ export const csrfTokenMiddleware = (req: Request, res: Response, next: NextFunct
       res.cookie('XSRF-TOKEN', req.csrfToken(), {
         httpOnly: false,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 24 * 60 * 60 * 1000
+        sameSite: 'lax', // Changed from 'strict' to 'lax' for cross-origin support
+        maxAge: 24 * 60 * 60 * 1000 // 24 hours
       });
     }
     
@@ -73,6 +113,12 @@ export const csrfProtectionMiddleware = (req: Request, res: Response, next: Next
   
   // Skip CSRF for health check endpoint
   if (req.path === '/health') {
+    next();
+    return;
+  }
+
+  // Skip CSRF for public authentication endpoints
+  if (isPublicEndpoint(req.path)) {
     next();
     return;
   }
@@ -100,5 +146,3 @@ export const csrfProtectionMiddleware = (req: Request, res: Response, next: Next
     next();
   });
 };
-
-
