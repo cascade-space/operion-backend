@@ -125,59 +125,117 @@ class QuantityService {
     today: Date
   ): Promise<number> {
     try {
-      // Query all ProcessStage records from previous days (date < today)
+      // Normalize today to start of day (00:00:00.000) to ensure accurate date comparison
+      const todayStart = new Date(today);
+      todayStart.setHours(0, 0, 0, 0);
+      
+      // Calculate start of tomorrow for range query
+      const tomorrowStart = new Date(todayStart);
+      tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+
+      logger.debug('🔍 Calculating cumulative available quantity:', {
+        factoryId: factoryId.toString(),
+        productId: productId.toString(),
+        processId: processId.toString(),
+        todayStart: todayStart.toISOString(),
+        tomorrowStart: tomorrowStart.toISOString()
+      });
+
+      // Query all ProcessStage records from previous days (date < todayStart)
       // Include ALL days regardless of availableQuantity value (positive or negative)
       // Negative values represent consumption from that day's pool
+      // Use date comparison with normalized todayStart to ensure we get all previous days
       const previousDaysTotal = await ProcessStage.aggregate([
         {
           $match: {
             factoryId: factoryId,
             productId: productId,
             processId: processId,
-            date: { $lt: today }
-            // Removed availableQuantity filter to include ALL previous days
+            date: { $lt: todayStart }
           }
         },
         {
           $group: {
             _id: null,
-            totalAvailable: { $sum: '$availableQuantity' }
+            totalAvailable: { $sum: '$availableQuantity' },
+            recordCount: { $sum: 1 }
           }
         }
       ]);
 
-      const previousDaysSum = previousDaysTotal.length > 0 ? previousDaysTotal[0].totalAvailable : 0;
+      const previousDaysSum = previousDaysTotal.length > 0 ? (previousDaysTotal[0].totalAvailable || 0) : 0;
+      const previousDaysRecordCount = previousDaysTotal.length > 0 ? (previousDaysTotal[0].recordCount || 0) : 0;
 
-      // Get today's availableQuantity
+      // Get today's availableQuantity using date range query to handle any time components
       const todayStage = await ProcessStage.findOne({
         factoryId: factoryId,
         productId: productId,
         processId: processId,
-        date: today
+        date: {
+          $gte: todayStart,
+          $lt: tomorrowStart
+        }
       });
 
       const todayAvailable = todayStage?.availableQuantity || 0;
 
       const cumulativeTotal = previousDaysSum + todayAvailable;
 
-      console.log('🔍 Cumulative available quantity calculated:', {
+      logger.debug('🔍 Cumulative available quantity calculated:', {
         processId: processId.toString(),
+        productId: productId.toString(),
         previousDaysSum,
+        previousDaysRecordCount,
         todayAvailable,
+        todayStageExists: !!todayStage,
         cumulativeTotal
       });
 
+      // Additional detailed logging for debugging
+      if (previousDaysRecordCount > 0 || todayStage) {
+        logger.debug('🔍 ProcessStage records found:', {
+          previousDaysRecords: previousDaysRecordCount,
+          todayRecord: todayStage ? {
+            date: todayStage.date,
+            availableQuantity: todayStage.availableQuantity,
+            achievedQuantity: todayStage.achievedQuantity,
+            rejectedQuantity: todayStage.rejectedQuantity
+          } : null
+        });
+      }
+
       return cumulativeTotal;
     } catch (error) {
-      console.error('❌ Error calculating cumulative available quantity:', error);
-      // Fallback to today's availableQuantity only if calculation fails
-      const todayStage = await ProcessStage.findOne({
-        factoryId: factoryId,
-        productId: productId,
-        processId: processId,
-        date: today
+      logger.error('❌ Error calculating cumulative available quantity:', {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        factoryId: factoryId.toString(),
+        productId: productId.toString(),
+        processId: processId.toString(),
+        today: today.toISOString()
       });
-      return todayStage?.availableQuantity || 0;
+      
+      // Fallback to today's availableQuantity only if calculation fails
+      try {
+        const todayStart = new Date(today);
+        todayStart.setHours(0, 0, 0, 0);
+        const tomorrowStart = new Date(todayStart);
+        tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+        
+        const todayStage = await ProcessStage.findOne({
+          factoryId: factoryId,
+          productId: productId,
+          processId: processId,
+          date: {
+            $gte: todayStart,
+            $lt: tomorrowStart
+          }
+        });
+        return todayStage?.availableQuantity || 0;
+      } catch (fallbackError) {
+        logger.error('❌ Fallback query also failed:', fallbackError);
+        return 0;
+      }
     }
   }
 
