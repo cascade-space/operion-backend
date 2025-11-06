@@ -659,26 +659,54 @@ export const updateProfile = async (req: AuthRequest, res: Response): Promise<vo
 
     const { profile } = req.body;
 
-    // Update profile fields
-    if (profile) {
-      Object.assign(req.user.profile, profile);
+    if (!profile) {
+      const response: ApiResponse = {
+        success: false,
+        error: 'Profile data is required',
+        status: 400
+      };
+      res.status(400).json(response);
+      return;
     }
 
-    await req.user.save();
+    // Fetch user fresh from database to ensure we have a full Mongoose document
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      const response: ApiResponse = {
+        success: false,
+        error: 'User not found',
+        status: 404
+      };
+      res.status(404).json(response);
+      return;
+    }
+
+    // Update profile fields
+    if (profile.firstName) user.profile.firstName = profile.firstName;
+    if (profile.lastName) user.profile.lastName = profile.lastName;
+    if (profile.phone) user.profile.phone = profile.phone;
+    if (profile.avatar !== undefined) user.profile.avatar = profile.avatar;
+    if (profile.address) {
+      user.profile.address = { ...user.profile.address, ...profile.address };
+    }
+
+    // Mark the profile field as modified to ensure Mongoose saves it
+    user.markModified('profile');
+    await user.save();
 
     const response: ApiResponse = {
       success: true,
-      data: req.user.toJSON(),
+      data: user.toJSON(),
       message: 'Profile updated successfully',
       status: 200
     };
 
     res.status(200).json(response);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Update profile error:', error);
     const response: ApiResponse = {
       success: false,
-      error: 'Failed to update profile',
+      error: error.message || 'Failed to update profile',
       status: 500
     };
     res.status(500).json(response);
