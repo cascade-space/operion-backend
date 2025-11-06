@@ -133,7 +133,7 @@ class QuantityService {
       const tomorrowStart = new Date(todayStart);
       tomorrowStart.setDate(tomorrowStart.getDate() + 1);
 
-      logger.debug('🔍 Calculating cumulative available quantity:', {
+      logger.info('🔍 Calculating cumulative available quantity:', {
         factoryId: factoryId.toString(),
         productId: productId.toString(),
         processId: processId.toString(),
@@ -181,7 +181,7 @@ class QuantityService {
 
       const cumulativeTotal = previousDaysSum + todayAvailable;
 
-      logger.debug('🔍 Cumulative available quantity calculated:', {
+      logger.info('🔍 Cumulative available quantity calculated:', {
         processId: processId.toString(),
         productId: productId.toString(),
         previousDaysSum,
@@ -193,7 +193,7 @@ class QuantityService {
 
       // Additional detailed logging for debugging
       if (previousDaysRecordCount > 0 || todayStage) {
-        logger.debug('🔍 ProcessStage records found:', {
+        logger.info('🔍 ProcessStage records found:', {
           previousDaysRecords: previousDaysRecordCount,
           todayRecord: todayStage ? {
             date: todayStage.date,
@@ -201,6 +201,13 @@ class QuantityService {
             achievedQuantity: todayStage.achievedQuantity,
             rejectedQuantity: todayStage.rejectedQuantity
           } : null
+        });
+      } else {
+        logger.warn('⚠️ No ProcessStage records found for cumulative calculation', {
+          processId: processId.toString(),
+          productId: productId.toString(),
+          factoryId: factoryId.toString(),
+          todayStart: todayStart.toISOString()
         });
       }
 
@@ -958,27 +965,46 @@ class QuantityService {
           // First process stage - always allow
           return { canStart: true };
         } else if (processOrder && processOrder > 1) {
-          // Get previous process and calculate cumulative available quantity
-          const previousProcess = product.processes?.find(p => p.order === processOrder - 1);
-          if (previousProcess) {
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
+          // For non-first stages, check the CURRENT stage's cumulative available quantity
+          // This represents what's available from the previous stage's output (all previous days + today)
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
 
-            // Calculate cumulative available quantity from previous stage
-            // This includes all previous days' remaining availableQuantity + today's availableQuantity
-            const cumulativeAvailableQuantity = await this.calculateCumulativeAvailableQuantity(
-              product.factoryId,
-              new Types.ObjectId(productId),
-              new Types.ObjectId(previousProcess.processId),
-              today
-            );
-            
-            if (cumulativeAvailableQuantity <= 0) {
-              return { canStart: false, reason: 'No quantity available from previous stage' };
-            }
-            
-            return { canStart: true };
+          logger.info('🔍 canStartWork: Checking current stage cumulative available quantity', {
+            currentProcessId: processId,
+            currentProcessOrder: processOrder,
+            productId: productId,
+            factoryId: product.factoryId?.toString(),
+            today: today.toISOString()
+          });
+
+          // Calculate cumulative available quantity for the CURRENT stage
+          // This includes all previous days' remaining availableQuantity + today's availableQuantity
+          // The availableQuantity in the current stage comes from the previous stage's output
+          const cumulativeAvailableQuantity = await this.calculateCumulativeAvailableQuantity(
+            product.factoryId,
+            new Types.ObjectId(productId),
+            new Types.ObjectId(processId),
+            today
+          );
+          
+          logger.info('🔍 canStartWork: Cumulative quantity result for current stage', {
+            currentProcessId: processId,
+            currentProcessOrder: processOrder,
+            cumulativeAvailableQuantity,
+            canStart: cumulativeAvailableQuantity > 0
+          });
+          
+          if (cumulativeAvailableQuantity <= 0) {
+            logger.warn('❌ canStartWork: No quantity available from previous stage', {
+              currentProcessId: processId,
+              currentProcessOrder: processOrder,
+              cumulativeAvailableQuantity
+            });
+            return { canStart: false, reason: 'No quantity available from previous stage' };
           }
+          
+          return { canStart: true };
         }
       }
 
