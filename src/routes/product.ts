@@ -265,24 +265,27 @@ router.put('/:id', authenticate, authorize('super_admin', 'factory_admin'), vali
     if (processes !== undefined) updateData.processes = processes;
     if (specifications !== undefined) updateData.specifications = specifications || {};
     
-    // Only update inventory if provided
-    if (inventory !== undefined && inventory !== null) {
-      if (inventory.currentStock !== undefined) {
+    // Only update inventory if provided and is a valid object
+    if (inventory !== undefined && inventory !== null && typeof inventory === 'object') {
+      // Check if currentStock is provided
+      if (inventory.currentStock !== undefined && inventory.currentStock !== null) {
         updateData.inventory = {
           currentStock: inventory.currentStock,
           maxStock: inventory.maxStock !== undefined ? inventory.maxStock : (inventory.currentStock * 2),
           minStock: inventory.minStock !== undefined ? inventory.minStock : Math.floor(inventory.currentStock * 0.2),
           unit: inventory.unit || (product as any).inventory?.unit || 'units'
         };
-      } else {
-        // Preserve existing inventory values if only partial update
+      } else if (inventory.maxStock !== undefined || inventory.minStock !== undefined || inventory.unit !== undefined) {
+        // Preserve existing inventory values if only partial update (maxStock, minStock, or unit)
+        const existingInventory = (product as any).inventory || {};
         updateData.inventory = {
-          ...(product as any).inventory,
-          ...(inventory.maxStock !== undefined && { maxStock: inventory.maxStock }),
-          ...(inventory.minStock !== undefined && { minStock: inventory.minStock }),
-          ...(inventory.unit !== undefined && { unit: inventory.unit })
+          currentStock: existingInventory.currentStock || 0,
+          maxStock: inventory.maxStock !== undefined ? inventory.maxStock : existingInventory.maxStock,
+          minStock: inventory.minStock !== undefined ? inventory.minStock : existingInventory.minStock,
+          unit: inventory.unit !== undefined ? inventory.unit : existingInventory.unit || 'units'
         };
       }
+      // If inventory is provided but empty object or has no valid fields, don't update inventory
     }
     
     // Handle factoryId for super_admin
@@ -315,9 +318,14 @@ router.put('/:id', authenticate, authorize('super_admin', 'factory_admin'), vali
     res.status(200).json(response);
   } catch (error: any) {
     console.error('Update product error:', error);
+    console.error('Error stack:', error.stack);
+    console.error('Request body:', JSON.stringify(req.body, null, 2));
+    console.error('Product ID:', req.params.id);
+    
+    const errorMessage = error.message || 'Failed to update product';
     const response: ApiResponse = {
       success: false,
-      error: 'Failed to update product',
+      error: errorMessage,
       status: 500
     };
     res.status(500).json(response);
