@@ -23,6 +23,11 @@ const PUBLIC_ENDPOINTS = [
   '/api/v1/factories/register',
 ];
 
+// Check if endpoint is public (doesn't require CSRF protection)
+const isPublicEndpoint = (path: string): boolean => {
+  return PUBLIC_ENDPOINTS.some(endpoint => path.startsWith(endpoint));
+};
+
 // Helper to get cookie options based on environment
 const getCookieOptions = () => {
   const isProduction = process.env.NODE_ENV === 'production';
@@ -65,12 +70,7 @@ export const csrfTokenMiddleware = (req: Request, res: Response, next: NextFunct
     csrfProtection(req, res, () => {
       // Set CSRF token in cookie for frontend to read
       if (req.csrfToken) {
-        res.cookie('XSRF-TOKEN', req.csrfToken(), {
-          httpOnly: false, // Must be false so JavaScript can read it
-          secure: process.env.NODE_ENV === 'production', // HTTPS only in production
-          sameSite: 'lax', // Changed from 'strict' to 'lax' for cross-origin support
-          maxAge: 24 * 60 * 60 * 1000 // 24 hours
-        });
+        res.cookie('XSRF-TOKEN', req.csrfToken(), getCookieOptions());
       }
       next();
     });
@@ -80,11 +80,21 @@ export const csrfTokenMiddleware = (req: Request, res: Response, next: NextFunct
   // For other methods, validate CSRF token
   csrfProtection(req, res, (err) => {
     if (err) {
+      // Enhanced error logging for debugging
+      const csrfTokenHeader = req.headers['x-xsrf-token'] || req.headers['x-csrf-token'] || req.headers['xsrf-token'] || req.headers['csrf-token'];
+      const cookieToken = req.cookies?.['XSRF-TOKEN'];
+      
       logger.warn('CSRF token validation failed', {
         path: req.path,
         method: req.method,
         ip: req.ip,
-        error: err instanceof Error ? err.message : String(err)
+        error: err instanceof Error ? err.message : String(err),
+        hasHeaderToken: !!csrfTokenHeader,
+        hasCookieToken: !!cookieToken,
+        headerTokenLength: csrfTokenHeader ? String(csrfTokenHeader).length : 0,
+        cookieTokenLength: cookieToken ? String(cookieToken).length : 0,
+        origin: req.headers.origin,
+        referer: req.headers.referer
       });
       
       const response: ApiResponse = {
@@ -99,12 +109,7 @@ export const csrfTokenMiddleware = (req: Request, res: Response, next: NextFunct
     
     // Update CSRF token cookie after successful validation
     if (req.csrfToken) {
-      res.cookie('XSRF-TOKEN', req.csrfToken(), {
-        httpOnly: false,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax', // Changed from 'strict' to 'lax' for cross-origin support
-        maxAge: 24 * 60 * 60 * 1000 // 24 hours
-      });
+      res.cookie('XSRF-TOKEN', req.csrfToken(), getCookieOptions());
     }
     
     next();
@@ -135,11 +140,21 @@ export const csrfProtectionMiddleware = (req: Request, res: Response, next: Next
   // Apply CSRF protection
   csrfProtection(req, res, (err) => {
     if (err) {
+      // Enhanced error logging for debugging
+      const csrfTokenHeader = req.headers['x-xsrf-token'] || req.headers['x-csrf-token'] || req.headers['xsrf-token'] || req.headers['csrf-token'];
+      const cookieToken = req.cookies?.['XSRF-TOKEN'];
+      
       logger.warn('CSRF token validation failed', {
         path: req.path,
         method: req.method,
         ip: req.ip,
-        error: err instanceof Error ? err.message : String(err)
+        error: err instanceof Error ? err.message : String(err),
+        hasHeaderToken: !!csrfTokenHeader,
+        hasCookieToken: !!cookieToken,
+        headerTokenLength: csrfTokenHeader ? String(csrfTokenHeader).length : 0,
+        cookieTokenLength: cookieToken ? String(cookieToken).length : 0,
+        origin: req.headers.origin,
+        referer: req.headers.referer
       });
       
       const response: ApiResponse = {
