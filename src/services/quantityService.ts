@@ -177,8 +177,10 @@ class QuantityService {
         }
       });
 
+      // Get today's availableQuantity (can be negative if consuming from previous days' pool)
       const todayAvailable = todayStage?.availableQuantity || 0;
 
+      // Sum previous days + today (negative today values correctly reduce the cumulative total)
       const cumulativeTotal = previousDaysSum + todayAvailable;
 
       logger.info('🔍 Cumulative available quantity calculated:', {
@@ -373,6 +375,13 @@ class QuantityService {
   /**
    * Atomically deduct quantity from a process
    * Returns success status and remaining quantity
+   * 
+   * Negative availableQuantity semantics:
+   * - ProcessStage.availableQuantity can be negative to represent consumption from previous days' cumulative pool
+   * - When today's availableQuantity goes negative, it means we're consuming from previous days' remaining quantity
+   * - The cumulative available quantity (sum of all previous days + today) is what matters for validation
+   * - Example: Previous days sum = 100, today starts at 0, consume 50 → today becomes -50, cumulative = 50
+   * - The schema allows negative values (no min constraint) to support this consumption model
    */
   async deductQuantity(
     processId: string, 
@@ -487,6 +496,11 @@ class QuantityService {
         
         // For validation, check cumulative available quantity (previous days + today)
         // but consumption will still happen from today's ProcessStage only
+        // 
+        // IMPORTANT: Negative availableQuantity semantics:
+        // - When today's availableQuantity goes negative, it means we're consuming from previous days' cumulative pool
+        // - The cumulative available quantity (previous days + today) is what matters for validation
+        // - Example: Previous days sum = 100, today starts at 0, consume 50 → today becomes -50, cumulative = 50
         const cumulativeAvailableQuantity = await this.calculateCumulativeAvailableQuantity(
           stageInfo.product.factoryId,
           new Types.ObjectId(productId),
@@ -539,6 +553,11 @@ class QuantityService {
         
         // 1. Update current stage - consume units and add achieved/rejected
         // Consumption always happens from today's ProcessStage (may go negative if consuming from cumulative pool)
+        // 
+        // Negative availableQuantity explanation:
+        // - If today's availableQuantity becomes negative, it represents consumption from previous days' pool
+        // - The ProcessStage schema allows negative values (no min constraint) to support this behavior
+        // - The cumulative calculation (previous days + today) correctly accounts for negative values
         console.log('⚙️ Updating current stage availableQuantity:', {
           processId: stageInfo.currentProcess.processId,
           decrementBy: -totalToConsume,
@@ -689,9 +708,25 @@ class QuantityService {
       // Note: First stage (stageInfo.isFirst) is never auto-locked
       // because it has unlimited input and multiple employees can submit
 
+      // Calculate remaining cumulative quantity after deduction
+      let remainingQuantity = 0;
+      if (stageInfo.isFirst) {
+        // First stage has unlimited quantity
+        remainingQuantity = 999999;
+      } else {
+        // For non-first stages, calculate cumulative available quantity after deduction
+        const remainingCumulativeQuantity = await this.calculateCumulativeAvailableQuantity(
+          stageInfo.product.factoryId,
+          new Types.ObjectId(productId),
+          new Types.ObjectId(processId),
+          today
+        );
+        remainingQuantity = Math.max(0, remainingCumulativeQuantity);
+      }
+
       return {
         success: true,
-        remainingQuantity: 0,
+        remainingQuantity,
         stageCompleted: false
       };
 

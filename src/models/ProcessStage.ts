@@ -8,7 +8,7 @@ export interface ProcessStageDocument extends Document {
   date: Date;
   achievedQuantity: number;
   rejectedQuantity: number;
-  availableQuantity: number; // Available for next stage
+  availableQuantity: number; // Available for next stage. Can be negative when consuming from previous days' cumulative pool
   isLocked: boolean;
   lockedAt?: Date;
   createdAt: Date;
@@ -57,7 +57,8 @@ const processStageSchema = new Schema<ProcessStageDocument>({
   availableQuantity: {
     type: Number,
     default: 0,
-    min: 0
+    // Note: No min constraint - negative values represent consumption from previous days' cumulative pool
+    // The cumulative available quantity (previous days + today) is what matters for validation
   },
   isLocked: {
     type: Boolean,
