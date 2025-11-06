@@ -987,37 +987,118 @@ export const directWorkEntry = async (req: AuthRequest, res: Response): Promise<
       location: location || { latitude: 0, longitude: 0 }
     });
 
-    await workEntry.save();
+    // Save work entry with proper error handling
+    let savedWorkEntry;
+    try {
+      savedWorkEntry = await workEntry.save();
+      logger.debug('Work entry saved successfully', {
+        workEntryId: savedWorkEntry._id.toString(),
+        employeeId: savedWorkEntry.employeeId.toString(),
+        processId: savedWorkEntry.processId.toString()
+      });
+    } catch (saveError: any) {
+      // Handle validation errors
+      if (saveError.name === 'ValidationError') {
+        logError('Work entry validation error', saveError, {
+          validationErrors: saveError.errors,
+          workEntryData: {
+            employeeId: verifiedEmployeeId.toString(),
+            processId: processId.toString(),
+            productId: productId.toString(),
+            achieved: numericAchieved,
+            rejected: numericRejected
+          }
+        });
+        const response: ApiResponse = {
+          success: false,
+          error: 'Validation failed',
+          status: 400,
+          data: { errors: saveError.errors }
+        };
+        res.status(400).json(response);
+        return;
+      }
+      
+      // Handle cast errors
+      if (saveError.name === 'CastError') {
+        logError('Work entry cast error', saveError, {
+          path: saveError.path,
+          value: saveError.value,
+          kind: saveError.kind
+        });
+        const response: ApiResponse = {
+          success: false,
+          error: `Invalid ${saveError.path}: ${saveError.value}`,
+          status: 400
+        };
+        res.status(400).json(response);
+        return;
+      }
+      
+      // Re-throw other errors to be caught by outer catch
+      throw saveError;
+    }
+    
+    // Verify work entry was saved by querying database
+    try {
+      const verifiedWorkEntry = await WorkEntry.findById(savedWorkEntry._id);
+      if (!verifiedWorkEntry) {
+        logger.error('Work entry not found after save', {
+          workEntryId: savedWorkEntry._id.toString()
+        });
+        const response: ApiResponse = {
+          success: false,
+          error: 'Work entry was not saved to database',
+          status: 500
+        };
+        res.status(500).json(response);
+        return;
+      }
+      logger.debug('Work entry verified in database', {
+        workEntryId: verifiedWorkEntry._id.toString()
+      });
+    } catch (verifyError: any) {
+      logError('Failed to verify work entry save', verifyError, {
+        workEntryId: savedWorkEntry._id.toString()
+      });
+      // Continue anyway - save might have succeeded but query failed
+    }
     
     // Invalidate dashboard cache
-    if (workEntry.factoryId) {
-      dashboardService.invalidateCache(workEntry.factoryId);
+    if (savedWorkEntry.factoryId) {
+      dashboardService.invalidateCache(savedWorkEntry.factoryId);
     }
 
     // Use quantityService.deductQuantity to properly handle quantity flow between stages
     logger.debug('Processing quantity deduction for direct work entry', {
-      workEntryId: workEntry._id,
-      processId: workEntry.processId.toString(),
-      productId: workEntry.productId?.toString(),
+      workEntryId: savedWorkEntry._id,
+      processId: savedWorkEntry.processId.toString(),
+      productId: savedWorkEntry.productId?.toString(),
       achieved: numericAchieved,
       rejected: numericRejected
     });
     
     const quantityResult = await quantityService.deductQuantity(
-      workEntry.processId.toString(),
+      savedWorkEntry.processId.toString(),
       numericAchieved,
       numericRejected,
-      workEntry.productId?.toString()
+      savedWorkEntry.productId?.toString()
     );
 
     logger.debug('Quantity deduction result (direct)', quantityResult);
 
     if (!quantityResult.success) {
       logger.warn('Quantity deduction failed for direct work entry', quantityResult);
+      // Work entry is already saved, but quantity deduction failed
+      // Return error but note that work entry exists
       const response: ApiResponse = {
         success: false,
         error: 'Failed to process quantity deduction',
-        status: 400
+        status: 400,
+        data: { 
+          workEntryId: savedWorkEntry._id.toString(),
+          note: 'Work entry was created but quantity deduction failed'
+        }
       };
       res.status(400).json(response);
       return;
@@ -1025,18 +1106,18 @@ export const directWorkEntry = async (req: AuthRequest, res: Response): Promise<
 
 
     logger.info('Direct work entry created successfully', {
-      workEntryId: workEntry._id,
-      employeeId: workEntry.employeeId,
-      processId: workEntry.processId,
-      achieved: workEntry.achieved,
-      rejected: workEntry.rejected
+      workEntryId: savedWorkEntry._id,
+      employeeId: savedWorkEntry.employeeId,
+      processId: savedWorkEntry.processId,
+      achieved: savedWorkEntry.achieved,
+      rejected: savedWorkEntry.rejected
     });
 
     const response: ApiResponse = {
       success: true,
       message: 'Work entry created successfully',
       status: 201,
-      data: workEntry
+      data: savedWorkEntry
     };
 
     // Broadcast production data update via WebSocket
