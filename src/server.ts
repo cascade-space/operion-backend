@@ -227,8 +227,14 @@ if (useRedisRateLimit && redisService.getConnectionStatus()) {
     message: 'Too many requests from this IP, please try again later.',
     allowedOrigins: allowedOrigins, // Pass allowed origins to rate limiter for CORS headers
     skip: (req) => {
-      // Skip rate limiting for health check endpoint and in development
-      return req.path === '/health' || isDevelopment;
+      // Skip rate limiting for:
+      // - Health check endpoint
+      // - Auth refresh endpoint (users need frequent token refreshes, already protected by refresh token)
+      // - Development mode
+      return req.path === '/health' || 
+             req.path === '/api/auth/refresh' || 
+             req.path === '/api/v1/auth/refresh' ||
+             isDevelopment;
     }
   });
   app.use(redisLimiter);
@@ -256,9 +262,12 @@ if (useRedisRateLimit && redisService.getConnectionStatus()) {
       });
     },
     skip: (req) => {
-      // Skip rate limiting for health check endpoint
-      // Note: We're already using high limits in development, so skip is mainly for health checks
-      return req.path === '/health';
+      // Skip rate limiting for:
+      // - Health check endpoint
+      // - Auth refresh endpoint (users need frequent token refreshes, already protected by refresh token)
+      return req.path === '/health' || 
+             req.path === '/api/auth/refresh' || 
+             req.path === '/api/v1/auth/refresh';
     }
   });
   app.use(limiter);
