@@ -89,6 +89,15 @@ export const csrfTokenMiddleware = (req: Request, res: Response, next: NextFunct
       // Enhanced error logging for debugging
       const csrfTokenHeader = req.headers['x-xsrf-token'] || req.headers['x-csrf-token'] || req.headers['xsrf-token'] || req.headers['csrf-token'];
       const cookieToken = req.cookies?.['XSRF-TOKEN'];
+      const csrfSecretCookie = req.cookies?.['_csrf']; // csurf's internal secret cookie
+      
+      // Log all relevant headers for debugging
+      const allHeaders = Object.keys(req.headers)
+        .filter(key => key.toLowerCase().includes('csrf') || key.toLowerCase().includes('xsrf'))
+        .reduce((obj, key) => {
+          obj[key] = req.headers[key];
+          return obj;
+        }, {} as Record<string, string | string[] | undefined>);
       
       logger.warn('CSRF token validation failed', {
         path: req.path,
@@ -97,10 +106,15 @@ export const csrfTokenMiddleware = (req: Request, res: Response, next: NextFunct
         error: err instanceof Error ? err.message : String(err),
         hasHeaderToken: !!csrfTokenHeader,
         hasCookieToken: !!cookieToken,
+        hasCsrfSecretCookie: !!csrfSecretCookie,
         headerTokenLength: csrfTokenHeader ? String(csrfTokenHeader).length : 0,
         cookieTokenLength: cookieToken ? String(cookieToken).length : 0,
+        csrfSecretCookieLength: csrfSecretCookie ? String(csrfSecretCookie).length : 0,
         origin: req.headers.origin,
-        referer: req.headers.referer
+        referer: req.headers.referer,
+        allCsrfHeaders: allHeaders,
+        allCookies: Object.keys(req.cookies || {}),
+        userAgent: req.headers['user-agent']
       });
       
       const response: ApiResponse = {
@@ -149,6 +163,15 @@ export const csrfProtectionMiddleware = (req: Request, res: Response, next: Next
       // Enhanced error logging for debugging
       const csrfTokenHeader = req.headers['x-xsrf-token'] || req.headers['x-csrf-token'] || req.headers['xsrf-token'] || req.headers['csrf-token'];
       const cookieToken = req.cookies?.['XSRF-TOKEN'];
+      const csrfSecretCookie = req.cookies?.['_csrf']; // csurf's internal secret cookie
+      
+      // Log all relevant headers for debugging
+      const allHeaders = Object.keys(req.headers)
+        .filter(key => key.toLowerCase().includes('csrf') || key.toLowerCase().includes('xsrf'))
+        .reduce((obj, key) => {
+          obj[key] = req.headers[key];
+          return obj;
+        }, {} as Record<string, string | string[] | undefined>);
       
       logger.warn('CSRF token validation failed', {
         path: req.path,
@@ -157,10 +180,15 @@ export const csrfProtectionMiddleware = (req: Request, res: Response, next: Next
         error: err instanceof Error ? err.message : String(err),
         hasHeaderToken: !!csrfTokenHeader,
         hasCookieToken: !!cookieToken,
+        hasCsrfSecretCookie: !!csrfSecretCookie,
         headerTokenLength: csrfTokenHeader ? String(csrfTokenHeader).length : 0,
         cookieTokenLength: cookieToken ? String(cookieToken).length : 0,
+        csrfSecretCookieLength: csrfSecretCookie ? String(csrfSecretCookie).length : 0,
         origin: req.headers.origin,
-        referer: req.headers.referer
+        referer: req.headers.referer,
+        allCsrfHeaders: allHeaders,
+        allCookies: Object.keys(req.cookies || {}),
+        userAgent: req.headers['user-agent']
       });
       
       const response: ApiResponse = {
