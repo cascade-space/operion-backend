@@ -670,7 +670,19 @@ export const updateProfile = async (req: AuthRequest, res: Response): Promise<vo
     }
 
     // Fetch user fresh from database to ensure we have a full Mongoose document
-    const user = await User.findById(req.user.id);
+    // Handle both _id (ObjectId) and id (string) - cached users might be plain objects
+    const userId = req.user._id || req.user.id;
+    if (!userId) {
+      const response: ApiResponse = {
+        success: false,
+        error: 'User ID not found',
+        status: 400
+      };
+      res.status(400).json(response);
+      return;
+    }
+    
+    const user = await User.findById(userId);
     if (!user) {
       const response: ApiResponse = {
         success: false,
