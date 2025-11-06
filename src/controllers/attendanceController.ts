@@ -394,38 +394,23 @@ export const getTodayAttendance = async (req: AuthRequest, res: Response): Promi
       return;
     }
 
-    // Get work entries for today to calculate check-in and check-out times
-    const workEntries = await WorkEntry.find({
-      employeeId: queryEmployeeId,
-      startTime: {
-        $gte: today,
-        $lt: tomorrow
-      }
-    }).sort({ startTime: 1 }); // Sort by start time
-
+    // Working hours calculation:
+    // Start Time: Check-in timestamp (attendance.checkIn.time)
+    // End Time: Production submission timestamp (attendance.checkOut.time, set when production is submitted)
     let checkInTime = attendance.checkIn?.time;
     let checkOutTime = attendance.checkOut?.time;
 
-    // If we have work entries, use the first work entry's start time as check-in
-    if (workEntries.length > 0) {
-      checkInTime = workEntries[0].startTime;
-      
-      // Use the last completed work entry's end time as check-out
-      const completedWorkEntries = workEntries.filter(entry => entry.endTime && entry.validationStatus === 'pending');
-      if (completedWorkEntries.length > 0) {
-        const lastCompletedEntry = completedWorkEntries[completedWorkEntries.length - 1];
-        if (lastCompletedEntry.endTime) {
-          checkOutTime = lastCompletedEntry.endTime;
-        }
-      }
-    }
-
-    // Calculate work hours
+    // Calculate work hours from check-in to check-out (production submission)
     let workHours = 0;
     if (checkInTime && checkOutTime) {
       const startTime = new Date(checkInTime);
       const endTime = new Date(checkOutTime);
       workHours = (endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60);
+    } else if (checkInTime && !checkOutTime) {
+      // If checked in but not checked out yet, calculate from check-in to now
+      const startTime = new Date(checkInTime);
+      const now = new Date();
+      workHours = (now.getTime() - startTime.getTime()) / (1000 * 60 * 60);
     }
 
     const attendanceWithWorkTimes = {
@@ -616,10 +601,7 @@ export const checkIn = async (req: AuthRequest, res: Response): Promise<void> =>
       return;
     }
 
-    // Basic geofence validation
-    let isWithinGeofence = true;
-    
-    // Get factory information for basic geofence check
+    // Get factory information for geofence validation
     const employee = await User.findById(employeeId).populate('factoryId');
     if (!employee) {
       logError('Check-in error: Employee not found', new Error('Employee not found'), { employeeId });
@@ -632,10 +614,28 @@ export const checkIn = async (req: AuthRequest, res: Response): Promise<void> =>
       return;
     }
 
+    // Strict geofence validation - block check-in if outside factory radius
+    let isWithinGeofence = true;
     if (employee?.factoryId && (employee.factoryId as any).geofence) {
       const factory = employee.factoryId as any;
       if (factory.geofence && factory.settings?.geofencingEnabled !== false) {
         isWithinGeofence = factory.isWithinGeofence(location.latitude, location.longitude);
+        
+        // Block check-in if outside geofence
+        if (!isWithinGeofence) {
+          logger.warn('Check-in blocked: Employee outside geofence', {
+            employeeId: employeeId.toString(),
+            location: { latitude: location.latitude, longitude: location.longitude },
+            factoryId: factory._id
+          });
+          const response: ApiResponse = {
+            success: false,
+            error: 'Please be present in the factory premises to check in',
+            status: 400
+          };
+          res.status(400).json(response);
+          return;
+        }
       }
     }
     
@@ -1254,18 +1254,22 @@ export const markAbsent = async (req: AuthRequest, res: Response): Promise<void>
       }
 
       // Mark employee as absent
+      // Note: checkIn.time and processId are required, so we use placeholders
+      // The status field indicates the employee is absent
       const absentAttendance = new Attendance({
         employeeId: employee._id,
         factoryId: employee.factoryId,
         date: today,
         checkIn: {
-          time: null,
-          location: null,
-          isWithinGeofence: false,
-          status: 'absent'
+          time: today, // Use start of day as placeholder (required field)
+          location: {
+            latitude: 0,
+            longitude: 0
+          },
+          isWithinGeofence: false
         },
         shiftType: 'morning', // Default shift
-        processId: null, // No process assignment required
+        processId: employee.factoryId, // Use factoryId as fallback (processId is required)
         target: 0,
         status: 'absent'
       });

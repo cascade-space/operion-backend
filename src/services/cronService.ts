@@ -2,6 +2,7 @@ import { cleanupOldPhotos, getCleanupStats } from '@/utils/photoCleanup';
 import { cleanupOldValidations, getValidationCleanupStats } from '@/utils/validationCleanup';
 import quantityService from '@/services/quantityService';
 import Factory from '@/models/Factory';
+import { markAbsentEmployees } from '@/utils/attendanceUtils';
 
 export interface CronJob {
   name: string;
@@ -46,6 +47,15 @@ class CronService {
       name: 'daily-production-reset',
       schedule: '0 0 * * *', // Daily at 12:00 AM
       handler: this.dailyProductionResetHandler.bind(this),
+      isRunning: false,
+      errorCount: 0
+    });
+
+    // Mark absent employees job - runs daily at 11:45 PM (end of day)
+    this.addJob({
+      name: 'mark-absent-employees',
+      schedule: '45 23 * * *', // Daily at 11:45 PM
+      handler: this.markAbsentEmployeesHandler.bind(this),
       isRunning: false,
       errorCount: 0
     });
@@ -196,6 +206,24 @@ class CronService {
       
     } catch (error: any) {
       console.error('❌ Daily production reset failed:', error.message);
+      throw error;
+    }
+  }
+
+  private async markAbsentEmployeesHandler(): Promise<void> {
+    try {
+      console.log('📋 Starting automatic absent marking for employees...');
+      
+      // Mark employees as absent if they haven't checked in by end of day
+      const result = await markAbsentEmployees();
+      
+      console.log(`✅ Automatic absent marking completed:`);
+      console.log(`   - Marked ${result.markedAbsent} employees as absent`);
+      console.log(`   - ${result.alreadyMarked} employees already had attendance records`);
+      console.log(`   - Total employees checked: ${result.totalEmployees}`);
+      
+    } catch (error: any) {
+      console.error('❌ Automatic absent marking failed:', error.message);
       throw error;
     }
   }

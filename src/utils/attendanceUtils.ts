@@ -62,18 +62,22 @@ export const markAbsentEmployees = async (): Promise<{
     }
 
     // Mark employee as absent
+    // Note: checkIn.time is required, so we use today's date as placeholder
+    // The status field indicates the employee is absent
     const absentAttendance = new Attendance({
       employeeId: employee._id,
       factoryId: employee.factoryId,
       date: today,
       checkIn: {
-        time: null,
-        location: null,
-        isWithinGeofence: false,
-        status: 'absent'
+        time: today, // Use start of day as placeholder (required field)
+        location: {
+          latitude: 0,
+          longitude: 0
+        },
+        isWithinGeofence: false
       },
       shiftType: 'morning', // Default shift
-      processId: null, // No process assignment required
+      processId: employee.factoryId, // Use factoryId as fallback (processId is required)
       target: 0,
       status: 'absent'
     });
