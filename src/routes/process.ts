@@ -9,6 +9,7 @@ import { validateMongoId } from '@/middleware/commonValidation';
 import { handleValidationErrors } from '@/middleware/validation';
 import quantityService from '@/services/quantityService';
 import { logError } from '@/utils/logger';
+import { wsServer } from '@/services/websocketServer';
 
 const router = Router();
 
@@ -183,6 +184,14 @@ router.post('/', authenticate, authorize('super_admin', 'factory_admin'), valida
       data: populatedProcess
     };
 
+    // Broadcast WebSocket event for process creation
+    if (factoryId) {
+      wsServer.broadcastToFactory(factoryId.toString(), {
+        type: 'process_created',
+        data: { processId: process._id.toString(), process: populatedProcess }
+      });
+    }
+
     res.status(201).json(response);
   } catch (error: any) {
     logError('Create process error', error, {
@@ -287,6 +296,14 @@ router.put('/:id', authenticate, authorize('super_admin', 'factory_admin'), vali
       data: updatedProcess
     };
 
+    // Broadcast WebSocket event for process update
+    if (process.factoryId) {
+      wsServer.broadcastToFactory(process.factoryId.toString(), {
+        type: 'process_updated',
+        data: { processId: updatedProcess._id.toString(), process: updatedProcess }
+      });
+    }
+
     res.status(200).json(response);
   } catch (error: any) {
     logError('Update process error', error, {
@@ -325,6 +342,7 @@ router.delete('/:id', authenticate, authorize('super_admin', 'factory_admin'), v
       return res.status(403).json(response);
     }
 
+    const factoryId = process.factoryId?.toString();
     await Process.findByIdAndDelete(req.params.id);
 
     const response: ApiResponse = {
@@ -332,6 +350,14 @@ router.delete('/:id', authenticate, authorize('super_admin', 'factory_admin'), v
       message: 'Process deleted successfully',
       status: 200
     };
+
+    // Broadcast WebSocket event for process deletion
+    if (factoryId) {
+      wsServer.broadcastToFactory(factoryId, {
+        type: 'process_deleted',
+        data: { processId: req.params.id }
+      });
+    }
 
     res.status(200).json(response);
   } catch (error: any) {

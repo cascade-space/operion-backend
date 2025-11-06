@@ -9,6 +9,7 @@ import { authenticate, authorize } from '@/middleware/auth';
 import { validateMongoId } from '@/middleware/commonValidation';
 import mongoose from 'mongoose';
 import { generateUserId, generatePassword, generateEmailFromId } from '@/utils/userUtils';
+import { wsServer } from '@/services/websocketServer';
 
 const router = Router();
 
@@ -471,6 +472,13 @@ router.post('/', authenticate, authorize('super_admin', 'factory_admin', 'superv
       }
     };
 
+    // Broadcast WebSocket event for user creation
+    if (factoryId) {
+      wsServer.broadcastToFactory(factoryId.toString(), {
+        type: 'user_created',
+        data: { userId: user._id.toString(), user: userResponse }
+      });
+    }
 
     res.status(201).json(response);
   } catch (error: any) {
@@ -618,6 +626,14 @@ router.put('/:id', authenticate, authorize('super_admin', 'factory_admin', 'supe
       data: updatedUser
     };
 
+    // Broadcast WebSocket event for user update
+    if (user.factoryId) {
+      wsServer.broadcastToFactory(user.factoryId.toString(), {
+        type: 'user_updated',
+        data: { userId: updatedUser._id.toString(), user: updatedUser }
+      });
+    }
+
     res.status(200).json(response);
   } catch (error: any) {
     console.error('Update user error:', error);
@@ -673,6 +689,7 @@ router.delete('/:id', authenticate, authorize('super_admin', 'factory_admin', 's
       return res.status(403).json(response);
     }
 
+    const factoryId = user.factoryId?.toString();
     await User.findByIdAndDelete(req.params.id);
 
     const response: ApiResponse = {
@@ -680,6 +697,14 @@ router.delete('/:id', authenticate, authorize('super_admin', 'factory_admin', 's
       message: 'User deleted successfully',
       status: 200
     };
+
+    // Broadcast WebSocket event for user deletion
+    if (factoryId) {
+      wsServer.broadcastToFactory(factoryId, {
+        type: 'user_deleted',
+        data: { userId: req.params.id }
+      });
+    }
 
     res.status(200).json(response);
   } catch (error: any) {

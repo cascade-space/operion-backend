@@ -4,6 +4,7 @@ import Product from '@/models/Product';
 import { ApiResponse } from '@/types';
 import { authenticate, authorize } from '@/middleware/auth';
 import { validateMongoId } from '@/middleware/commonValidation';
+import { wsServer } from '@/services/websocketServer';
 
 const router = Router();
 
@@ -176,6 +177,14 @@ router.post('/', authenticate, authorize('super_admin', 'factory_admin'), valida
       data: product
     };
 
+    // Broadcast WebSocket event for product creation
+    if (factoryId) {
+      wsServer.broadcastToFactory(factoryId.toString(), {
+        type: 'product_created',
+        data: { productId: product._id.toString(), product }
+      });
+    }
+
     res.status(201).json(response);
   } catch (error: any) {
     console.error('Create product error:', error);
@@ -271,6 +280,14 @@ router.put('/:id', authenticate, authorize('super_admin', 'factory_admin'), vali
       data: updatedProduct
     };
 
+    // Broadcast WebSocket event for product update
+    if (product.factoryId) {
+      wsServer.broadcastToFactory(product.factoryId.toString(), {
+        type: 'product_updated',
+        data: { productId: updatedProduct._id.toString(), product: updatedProduct }
+      });
+    }
+
     res.status(200).json(response);
   } catch (error: any) {
     console.error('Update product error:', error);
@@ -306,6 +323,7 @@ router.delete('/:id', authenticate, authorize('super_admin', 'factory_admin'), v
       return res.status(403).json(response);
     }
 
+    const factoryId = product.factoryId?.toString();
     await Product.findByIdAndDelete(req.params.id);
 
     const response: ApiResponse = {
@@ -313,6 +331,14 @@ router.delete('/:id', authenticate, authorize('super_admin', 'factory_admin'), v
       message: 'Product deleted successfully',
       status: 200
     };
+
+    // Broadcast WebSocket event for product deletion
+    if (factoryId) {
+      wsServer.broadcastToFactory(factoryId, {
+        type: 'product_deleted',
+        data: { productId: req.params.id }
+      });
+    }
 
     res.status(200).json(response);
   } catch (error: any) {
