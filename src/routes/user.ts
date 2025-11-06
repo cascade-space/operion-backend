@@ -623,19 +623,32 @@ router.put('/:id', authenticate, authorize('super_admin', 'factory_admin', 'supe
       }
     }
 
-    // Update user
-    const updatedUser = await User.findByIdAndUpdate(
-      req.params.id,
-      {
-        email,
-        username,
-        role,
-        profile,
-        
-        factoryId: req.user && req.user.role === 'super_admin' ? req.body.factoryId : req.user?.factoryId
-      },
-      { new: true, runValidators: true }
-    ).select('-password');
+    // Update user fields individually to ensure proper merging
+    if (email !== undefined) user.email = email;
+    if (username !== undefined) user.username = username;
+    if (role !== undefined) user.role = role;
+    if (req.user && req.user.role === 'super_admin' && req.body.factoryId !== undefined) {
+      user.factoryId = req.body.factoryId;
+    }
+
+    // Update profile fields individually to ensure proper merging (like updateProfile does)
+    if (profile) {
+      if (profile.firstName !== undefined) user.profile.firstName = profile.firstName;
+      if (profile.lastName !== undefined) user.profile.lastName = profile.lastName;
+      if (profile.phone !== undefined) user.profile.phone = profile.phone;
+      if (profile.avatar !== undefined) user.profile.avatar = profile.avatar;
+      if (profile.address) {
+        user.profile.address = { ...user.profile.address, ...profile.address };
+      }
+      // Mark the profile field as modified to ensure Mongoose saves it
+      user.markModified('profile');
+    }
+
+    // Save the user with all updates
+    await user.save();
+
+    // Fetch updated user without password
+    const updatedUser = await User.findById(req.params.id).select('-password');
 
     const response: ApiResponse = {
       success: true,
