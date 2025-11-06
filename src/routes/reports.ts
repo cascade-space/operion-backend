@@ -1739,17 +1739,22 @@ router.get('/process-stages-summary', authenticate, async (req, res) => {
         ps.processId._id.toString() === entry._id.processId.toString()
       );
       
-      // Calculate cumulative available quantity (previous days + today)
+      // Calculate cumulative available quantity (previous days + date of ProcessStage record)
+      // Use ProcessStage record's date if available, otherwise use today for current/realtime views
       let availableQuantity = 0;
       if (processStage) {
         // Get product to find factoryId
         const product = await Product.findById(entry._id.productId);
         if (product && product.factoryId) {
+          // Use ProcessStage record's date for cumulative calculation (normalized to start of day)
+          const calculationDate = processStage.date ? new Date(processStage.date) : today;
+          calculationDate.setHours(0, 0, 0, 0);
+          
           availableQuantity = await quantityService.calculateCumulativeAvailableQuantity(
             product.factoryId,
             new mongoose.Types.ObjectId(entry._id.productId),
             new mongoose.Types.ObjectId(entry._id.processId),
-            today
+            calculationDate
           );
         } else {
           // Fallback to today's value if product not found
@@ -2042,17 +2047,22 @@ router.get('/process-stages-summary/export/:format', authenticate, async (req, r
         ps.processId._id.toString() === entry._id.processId.toString()
       );
       
-      // Calculate cumulative available quantity (previous days + today)
+      // Calculate cumulative available quantity (previous days + date of ProcessStage record)
+      // Use ProcessStage record's date if available, otherwise use today for current/realtime views
       let availableQuantity = 0;
       if (processStage) {
         // Get product to find factoryId
         const product = await Product.findById(entry._id.productId);
         if (product && product.factoryId) {
+          // Use ProcessStage record's date for cumulative calculation (normalized to start of day)
+          const calculationDate = processStage.date ? new Date(processStage.date) : today;
+          calculationDate.setHours(0, 0, 0, 0);
+          
           availableQuantity = await quantityService.calculateCumulativeAvailableQuantity(
             product.factoryId,
             new mongoose.Types.ObjectId(entry._id.productId),
             new mongoose.Types.ObjectId(entry._id.processId),
-            today
+            calculationDate
           );
         } else {
           // Fallback to today's value if product not found
@@ -2455,17 +2465,22 @@ router.get('/product-process-stages', authenticate, async (req, res) => {
         ps.processId._id.toString() === entry._id.processId.toString()
       );
       
-      // Calculate cumulative available quantity (previous days + today)
+      // Calculate cumulative available quantity (previous days + date of ProcessStage record)
+      // Use ProcessStage record's date if available, otherwise use today for current/realtime views
       let availableQuantity = 0;
       if (processStage) {
         // Get product to find factoryId
         const product = await Product.findById(entry._id.productId);
         if (product && product.factoryId) {
+          // Use ProcessStage record's date for cumulative calculation (normalized to start of day)
+          const calculationDate = processStage.date ? new Date(processStage.date) : today;
+          calculationDate.setHours(0, 0, 0, 0);
+          
           availableQuantity = await quantityService.calculateCumulativeAvailableQuantity(
             product.factoryId,
             new mongoose.Types.ObjectId(entry._id.productId),
             new mongoose.Types.ObjectId(entry._id.processId),
-            today
+            calculationDate
           );
         } else {
           // Fallback to today's value if product not found
@@ -2860,7 +2875,8 @@ router.get('/realtime-display', authenticate, async (req, res) => {
           ps.processId._id.toString() === entry._id.processId.toString()
         );
         
-        // Calculate cumulative available quantity (previous days + today)
+        // Calculate cumulative available quantity (previous days + date of ProcessStage record)
+        // Use ProcessStage record's date if available, otherwise use today for realtime views
         let availableQuantity = 0;
         if (processStage) {
           try {
@@ -2868,11 +2884,15 @@ router.get('/realtime-display', authenticate, async (req, res) => {
             const product = await Product.findById(entry._id.productId);
             if (product && product.factoryId) {
               try {
+                // Use ProcessStage record's date for cumulative calculation (normalized to start of day)
+                const calculationDate = processStage.date ? new Date(processStage.date) : today;
+                calculationDate.setHours(0, 0, 0, 0);
+                
                 availableQuantity = await quantityService.calculateCumulativeAvailableQuantity(
                   product.factoryId,
                   new mongoose.Types.ObjectId(entry._id.productId),
                   new mongoose.Types.ObjectId(entry._id.processId),
-                  today
+                  calculationDate
                 );
               } catch (qtyError: any) {
                 // Log but don't fail - use fallback
@@ -3271,17 +3291,22 @@ router.get('/product-process-stages/export/:format', authenticate, async (req, r
         ps.processId._id.toString() === entry._id.processId.toString()
       );
       
-      // Calculate cumulative available quantity (previous days + today)
+      // Calculate cumulative available quantity (previous days + date of ProcessStage record)
+      // Use ProcessStage record's date if available, otherwise use today for current/realtime views
       let availableQuantity = 0;
       if (processStage) {
         // Get product to find factoryId
         const product = await Product.findById(entry._id.productId);
         if (product && product.factoryId) {
+          // Use ProcessStage record's date for cumulative calculation (normalized to start of day)
+          const calculationDate = processStage.date ? new Date(processStage.date) : today;
+          calculationDate.setHours(0, 0, 0, 0);
+          
           availableQuantity = await quantityService.calculateCumulativeAvailableQuantity(
             product.factoryId,
             new mongoose.Types.ObjectId(entry._id.productId),
             new mongoose.Types.ObjectId(entry._id.processId),
-            today
+            calculationDate
           );
         } else {
           // Fallback to today's value if product not found
