@@ -230,10 +230,13 @@ if (useRedisRateLimit && redisService.getConnectionStatus()) {
       // Skip rate limiting for:
       // - Health check endpoint
       // - Auth refresh endpoint (users need frequent token refreshes, already protected by refresh token)
+      // - Realtime display endpoint (allows unlimited refreshes for display screens)
       // - Development mode
       return req.path === '/health' || 
              req.path === '/api/auth/refresh' || 
              req.path === '/api/v1/auth/refresh' ||
+             req.path === '/api/reports/realtime-display' ||
+             req.path.startsWith('/api/reports/realtime-display') ||
              isDevelopment;
     }
   });
@@ -265,9 +268,12 @@ if (useRedisRateLimit && redisService.getConnectionStatus()) {
       // Skip rate limiting for:
       // - Health check endpoint
       // - Auth refresh endpoint (users need frequent token refreshes, already protected by refresh token)
+      // - Realtime display endpoint (allows unlimited refreshes for display screens)
       return req.path === '/health' || 
              req.path === '/api/auth/refresh' || 
-             req.path === '/api/v1/auth/refresh';
+             req.path === '/api/v1/auth/refresh' ||
+             req.path === '/api/reports/realtime-display' ||
+             req.path.startsWith('/api/reports/realtime-display');
     }
   });
   app.use(limiter);
