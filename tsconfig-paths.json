@@ -1,0 +1,14 @@
+{
+  "resolveFullPaths": true,
+  "replacers": {
+    "@/*": "./*",
+    "@/types/*": "./types/*",
+    "@/models/*": "./models/*",
+    "@/controllers/*": "./controllers/*",
+    "@/middleware/*": "./middleware/*",
+    "@/services/*": "./services/*",
+    "@/utils/*": "./utils/*",
+    "@/config/*": "./config/*"
+  }
+}
+

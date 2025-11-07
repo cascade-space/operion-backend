@@ -60,9 +60,16 @@ fi
 echo "Installing dependencies (including dev dependencies)..."
 npm install --include=dev
 
-# Build application with safe resource limits
-echo "Building application (safe mode)..."
-npm run build:safe
+# Build application with fallback mechanism
+echo "Building application (with fallback for tsc-alias)..."
+if [ -f "build-with-fallback.sh" ]; then
+    chmod +x build-with-fallback.sh
+    ./build-with-fallback.sh
+else
+    # Fallback to safe build script
+    echo "Using npm run build:safe..."
+    npm run build:safe
+fi
 
 if [ ! -f "dist/server.js" ]; then
     echo "Error: Build failed - dist/server.js not found"
