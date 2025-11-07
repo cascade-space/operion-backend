@@ -1,21 +1,20 @@
-// Use require to avoid TypeScript module resolution issues
-const createDOMPurifyModule = require('isomorphic-dompurify');
+import { JSDOM } from 'jsdom';
+import createDOMPurifyModule from 'isomorphic-dompurify';
 
-// Create DOMPurify instance - handle different export patterns
-let DOMPurify: any;
-if (typeof createDOMPurifyModule === 'function') {
-  DOMPurify = createDOMPurifyModule();
-} else if (createDOMPurifyModule.default && typeof createDOMPurifyModule.default === 'function') {
-  DOMPurify = createDOMPurifyModule.default();
-} else if (createDOMPurifyModule.default) {
-  DOMPurify = createDOMPurifyModule.default;
-} else {
-  DOMPurify = createDOMPurifyModule;
+let DOMPurify: ReturnType<typeof createDOMPurifyModule> | { sanitize: (dirty: string) => string };
+
+try {
+  // Attempt to initialize DOMPurify with server-side DOM implementation
+  const window = (global as any).window ?? new JSDOM('').window;
+  DOMPurify = createDOMPurifyModule(window);
+} catch (error) {
+  console.warn('DOMPurify initialization failed, falling back to passthrough sanitizer', error);
+  DOMPurify = { sanitize: (dirty: string) => dirty };
 }
 
-// Fallback if DOMPurify is not properly initialized
+// Ensure sanitize function exists
 if (!DOMPurify || typeof DOMPurify.sanitize !== 'function') {
-  console.warn('DOMPurify not properly initialized, using passthrough sanitizer');
+  console.warn('DOMPurify sanitize method unavailable, using passthrough');
   DOMPurify = { sanitize: (dirty: string) => dirty };
 }
 

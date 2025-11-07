@@ -124,7 +124,6 @@ const userSchema = new Schema<UserDocument>({
 });
 
 // Indexes for performance
-userSchema.index({ email: 1 });
 userSchema.index({ factoryId: 1, role: 1 });
 userSchema.index({ supervisorId: 1 });
 userSchema.index({ isActive: 1 });

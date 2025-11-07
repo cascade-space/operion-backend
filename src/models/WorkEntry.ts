@@ -176,7 +176,7 @@ workEntrySchema.virtual('totalWorkHours').get(function(this: WorkEntryDocument):
 });
 
 // Instance method to validate work entry
-workEntrySchema.methods.validate = function(
+workEntrySchema.methods.validateEntry = function(
   this: WorkEntryDocument, 
   validatedBy: mongoose.Types.ObjectId, 
   status: 'approved' | 'rejected', 
