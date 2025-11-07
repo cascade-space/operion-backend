@@ -56,13 +56,13 @@ if [[ "$MONGODB_URI_PROD" == *"CHANGE_ME"* ]] || [[ "$MONGODB_URI_PROD" == *"you
     fi
 fi
 
-# Install dependencies
-echo "Installing dependencies..."
-npm install
+# Install dependencies (include devDependencies for build tools)
+echo "Installing dependencies (including dev dependencies)..."
+npm install --include=dev
 
-# Build application
-echo "Building application..."
-npm run build
+# Build application with safe resource limits
+echo "Building application (safe mode)..."
+npm run build:safe
 
 if [ ! -f "dist/server.js" ]; then
     echo "Error: Build failed - dist/server.js not found"

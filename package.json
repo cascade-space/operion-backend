@@ -7,6 +7,7 @@
     "start": "node -r ./tsconfig-paths-bootstrap.js dist/server.js",
     "dev": "tsx watch src/server.ts",
     "build": "tsc && tsc-alias",
+    "build:safe": "NODE_OPTIONS='--max-old-space-size=2048' timeout 600 tsc && tsc-alias",
     "seed": "tsx src/scripts/seed.ts",
     "create-superadmin": "tsx src/scripts/create-superadmin.ts",
     "reset": "tsx src/scripts/reset-database.ts",
