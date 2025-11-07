@@ -151,7 +151,7 @@ class RedisService {
           this.client?.off('ready', readyHandler);
           this.client?.off('error', errorHandler);
           reject(new Error('Redis connection timeout'));
-        }, 10000);
+        }, 5000);
 
         const readyHandler = () => {
           clearTimeout(timeout);
@@ -182,6 +182,7 @@ class RedisService {
 
       // Now verify with ping
       await this.client.ping();
+      console.log('Redis: Warmup ping successful');
       
       // Connect subscriber and publisher
       if (this.subscriber) {

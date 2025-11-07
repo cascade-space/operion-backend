@@ -48,6 +48,46 @@ const app: express.Application = express();
 const server = createServer(app);
 const PORT = env.PORT;
 
+const runDatabaseWarmup = async (): Promise<void> => {
+  try {
+    if (!mongoose.connection.db) {
+      logger.warn('MongoDB warmup skipped - no active connection');
+      return;
+    }
+
+    const db = mongoose.connection.db;
+    const warmupTasks = [
+      { name: 'ping', task: db.command({ ping: 1 }) },
+      { name: 'users-sample', task: db.collection('users').findOne({}, { projection: { _id: 1 } }) },
+      { name: 'workentries-sample', task: db.collection('workentries').findOne({}, { projection: { _id: 1 } }) },
+      { name: 'factories-sample', task: db.collection('factories').findOne({}, { projection: { _id: 1 } }) },
+    ];
+
+    const results = await Promise.allSettled(warmupTasks.map((item) => item.task));
+    const failures = results
+      .map((result, index) => ({ result, name: warmupTasks[index].name }))
+      .filter(({ result }) => result.status === 'rejected')
+      .map(({ result, name }) => ({
+        name,
+        error: result.status === 'rejected'
+          ? result.reason instanceof Error
+            ? result.reason.message
+            : String(result.reason)
+          : undefined
+      }));
+
+    if (failures.length === 0) {
+      logger.info('MongoDB warmup queries completed');
+    } else {
+      logger.warn('MongoDB warmup encountered issues', { failures });
+    }
+  } catch (error) {
+    logger.warn('MongoDB warmup failed', {
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+};
+
 // Trust proxy - Required when behind nginx reverse proxy
 // This allows Express to read X-Forwarded-For headers correctly
 // Set to 1 to trust only the first proxy (nginx), preventing spoofing attacks
@@ -682,6 +722,8 @@ const startServer = async () => {
       }
     }
     
+    const databaseWarmupPromise = runDatabaseWarmup();
+
     // Connect to Redis (non-blocking - app can run without Redis in dev)
     try {
       await redisService.connect();
@@ -697,6 +739,12 @@ const startServer = async () => {
         logger.warn('Running without Redis - caching and WebSocket clustering disabled');
       }
     }
+    
+    await databaseWarmupPromise.catch((error) => {
+      logger.warn('Database warmup promise rejected', {
+        error: error instanceof Error ? error.message : String(error)
+      });
+    });
     
     // Initialize WebSocket server
     wsServer.initialize(server);

@@ -93,23 +93,34 @@ export const connectDB = async (): Promise<void> => {
     }
 
     // Adjust pool size based on environment
-    // Optimized for t2.micro: max 30, min 3 (reduced from 50/5)
+    // Optimized for t2.micro: keep connection pool small on startup
     const isProduction = process.env.NODE_ENV === 'production';
     const maxPoolSize = isProduction ? 30 : 10; // Reduced for t2.micro memory constraints
-    const minPoolSize = isProduction ? 3 : 2; // Reduced minimum pool size
+    const minPoolSize = 1; // Faster cold start - pool grows as needed
     
-    // Increased timeouts for DNS resolution and network issues
+    // Faster failure detection with lower timeouts
     const conn = await mongoose.connect(MONGODB_URI, {
       maxPoolSize, // Maximum number of connections in the pool
       minPoolSize,  // Minimum number of connections in the pool
-      serverSelectionTimeoutMS: 10000, // Increased timeout for server selection (10s)
+      serverSelectionTimeoutMS: 5000, // Faster server selection timeout (5s)
       socketTimeoutMS: 45000, // Socket timeout
-      connectTimeoutMS: 10000, // Connection timeout (10s)
+      connectTimeoutMS: 5000, // Faster connection timeout (5s)
       maxIdleTimeMS: 30000, // Close connections after 30 seconds of inactivity
+      bufferTimeoutMS: 0, // Fail fast if connection buffering occurs
     } as mongoose.ConnectOptions);
 
     logger.info(`MongoDB Connected: ${conn.connection.host}`);
     logger.info(`📊 MongoDB Database Name: "${conn.connection.name}"`);
+    
+    try {
+      // Warm up connection and load indexes into memory
+      await conn.connection.db.admin().ping();
+      logger.info('MongoDB warmup ping successful');
+    } catch (warmupError) {
+      logger.warn('MongoDB warmup ping failed', {
+        error: warmupError instanceof Error ? warmupError.message : String(warmupError)
+      });
+    }
     
     // Verify database name matches expected
     if (dbNameFromUri && conn.connection.name !== dbNameFromUri) {
