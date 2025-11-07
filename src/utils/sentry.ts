@@ -8,7 +8,10 @@ export function initSentry(): void {
   const dsn = process.env.SENTRY_DSN;
   
   if (!dsn) {
-    console.warn('Sentry DSN not configured. Error tracking disabled.');
+    // Only log in development - Sentry is optional in production
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('Sentry DSN not configured. Error tracking disabled.');
+    }
     return;
   }
 
